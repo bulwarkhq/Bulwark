@@ -1,0 +1,10 @@
+[project]
+name = "bulwark"
+description = "Oracle safety for Bitcoin DeFi on Stacks"
+authors = []
+telemetry = false
+cache_dir = "./.cache"
+
+[repl.analysis]
+passes = ["check_checker"]
+check_checker = { trusted_sender = false, trusted_caller = false, callee_filter = false }
