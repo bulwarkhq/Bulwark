@@ -6,6 +6,7 @@
 
 (define-constant ERR_STALE (err u6003))
 (define-constant ERR_FUTURE (err u6004))
+(define-constant ERR_LOW_CONFIDENCE (err u6005))
 (define-constant ERR_BAD_PRICE (err u6008))
 (define-constant ERR_BAD_EXPO (err u6014))
 
@@ -13,6 +14,7 @@
 ;; Pyth publish times come from Pythnet, Stacks block time is coarse: allow a
 ;; little skew before calling a timestamp "from the future".
 (define-constant MAX_FUTURE_SECS u10)
+(define-constant BPS u10000)
 
 ;; Scale a Pyth fixed-point price (price * 10^expo) to 8 decimals.
 (define-read-only (normalize (price int) (expo int))
@@ -32,3 +34,9 @@
 
 (define-private (age-of (publish-time uint) (block-time uint))
   (if (> block-time publish-time) (- block-time publish-time) u0))
+
+;; Reject prices whose published confidence interval is wider than max-conf-bps of the price.
+(define-read-only (check-confidence (conf uint) (price uint) (max-conf-bps uint))
+  (begin
+    (asserts! (<= (* conf BPS) (* price max-conf-bps)) ERR_LOW_CONFIDENCE)
+    (ok true)))

@@ -59,4 +59,22 @@ describe("price-policy", () => {
       expect(fresh(NOW + 11)).toBeErr(err(6004));
     });
   });
+
+  describe("check-confidence", () => {
+    // price 100_000.00000000, max 100 bps (1%) => conf must be <= 1_000.00000000
+    const PRICE = 100_000e8;
+    const conf = (c: number) => policy("check-confidence", [Cl.uint(c), Cl.uint(PRICE), Cl.uint(100)]);
+
+    it("accepts a tight confidence interval", () => {
+      expect(conf(10e8)).toBeOk(Cl.bool(true));
+    });
+
+    it("accepts a confidence exactly at the limit", () => {
+      expect(conf(1_000e8)).toBeOk(Cl.bool(true));
+    });
+
+    it("rejects a confidence interval wider than the limit", () => {
+      expect(conf(1_000e8 + 1)).toBeErr(err(6005));
+    });
+  });
 });
