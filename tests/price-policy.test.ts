@@ -122,4 +122,34 @@ describe("price-policy", () => {
       expect(order(1_000, 999)).toBeErr(err(6009));
     });
   });
+
+  describe("check-step", () => {
+    // last accepted 100_000 at t=1_000; max 500 bps (5%); a move only counts
+    // as "sudden" if the last price is at most 60s old.
+    const LAST = 100_000e8;
+    const step = (price: number, blockTime: number) =>
+      policy("check-step", [Cl.uint(LAST), Cl.uint(1_000), Cl.uint(price), Cl.uint(blockTime), Cl.uint(500), Cl.uint(60)]);
+
+    it("accepts a small move shortly after the last price", () => {
+      expect(step(102_000e8, 1_010)).toBeOk(Cl.bool(true));
+    });
+
+    it("accepts a move exactly at the limit, up or down", () => {
+      expect(step(105_000e8, 1_010)).toBeOk(Cl.bool(true));
+      expect(step(95_000e8, 1_010)).toBeOk(Cl.bool(true));
+    });
+
+    it("rejects a sudden jump in either direction", () => {
+      expect(step(105_000e8 + 1, 1_010)).toBeErr(err(6007));
+      expect(step(95_000e8 - 1, 1_010)).toBeErr(err(6007));
+    });
+
+    it("allows a large move once the last price is older than the window", () => {
+      expect(step(120_000e8, 1_061)).toBeOk(Cl.bool(true));
+    });
+
+    it("still applies the limit exactly at the window edge", () => {
+      expect(step(120_000e8, 1_060)).toBeErr(err(6007));
+    });
+  });
 });

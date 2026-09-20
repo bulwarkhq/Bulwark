@@ -9,6 +9,7 @@
 (define-constant ERR_LOW_CONFIDENCE (err u6005))
 (define-constant ERR_EMA_DEVIATION (err u6006))
 (define-constant ERR_TIME_REGRESSION (err u6009))
+(define-constant ERR_STEP (err u6007))
 (define-constant ERR_BAD_PRICE (err u6008))
 (define-constant ERR_BAD_EXPO (err u6014))
 
@@ -60,4 +61,15 @@
 (define-read-only (check-time-order (last-publish-time uint) (publish-time uint))
   (begin
     (asserts! (>= publish-time last-publish-time) ERR_TIME_REGRESSION)
+    (ok true)))
+
+;; Limit how far a price may move against the last accepted one while that price
+;; is still recent. After step-window seconds a large move is plausible again.
+(define-read-only (check-step
+    (last-price uint) (last-accepted-at uint) (price uint)
+    (block-time uint) (max-step-bps uint) (step-window uint))
+  (begin
+    (asserts! (or (> (- block-time last-accepted-at) step-window)
+                  (<= (* (abs-diff price last-price) BPS) (* last-price max-step-bps)))
+              ERR_STEP)
     (ok true)))
