@@ -13,3 +13,18 @@ check_checker = { trusted_sender = false, trusted_caller = false, callee_filter 
 path = "contracts/price-policy.clar"
 clarity_version = 3
 epoch = "3.0"
+
+[contracts.pyth-traits-v2]
+path = "contracts/pyth-traits-v2.clar"
+clarity_version = 3
+epoch = "3.0"
+
+[contracts.mock-pyth-storage]
+path = "contracts/mock-pyth-storage.clar"
+clarity_version = 3
+epoch = "3.0"
+
+[contracts.fake-pyth-storage]
+path = "contracts/fake-pyth-storage.clar"
+clarity_version = 3
+epoch = "3.0"
