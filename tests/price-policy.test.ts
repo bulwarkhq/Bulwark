@@ -105,4 +105,21 @@ describe("price-policy", () => {
       expect(dev(150_000e8, 0)).toBeOk(Cl.bool(true));
     });
   });
+
+  describe("check-time-order", () => {
+    const order = (lastPublish: number, publish: number) =>
+      policy("check-time-order", [Cl.uint(lastPublish), Cl.uint(publish)]);
+
+    it("accepts a newer publish time", () => {
+      expect(order(1_000, 1_005)).toBeOk(Cl.bool(true));
+    });
+
+    it("accepts the same publish time", () => {
+      expect(order(1_000, 1_000)).toBeOk(Cl.bool(true));
+    });
+
+    it("rejects a publish time older than one already accepted", () => {
+      expect(order(1_000, 999)).toBeErr(err(6009));
+    });
+  });
 });

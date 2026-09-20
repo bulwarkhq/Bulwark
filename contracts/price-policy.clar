@@ -8,6 +8,7 @@
 (define-constant ERR_FUTURE (err u6004))
 (define-constant ERR_LOW_CONFIDENCE (err u6005))
 (define-constant ERR_EMA_DEVIATION (err u6006))
+(define-constant ERR_TIME_REGRESSION (err u6009))
 (define-constant ERR_BAD_PRICE (err u6008))
 (define-constant ERR_BAD_EXPO (err u6014))
 
@@ -53,3 +54,10 @@
 
 (define-private (abs-diff (a uint) (b uint))
   (if (> a b) (- a b) (- b a)))
+
+;; Time must never run backwards: a price older than one already accepted is
+;; how an attacker replays a favourable historical tick.
+(define-read-only (check-time-order (last-publish-time uint) (publish-time uint))
+  (begin
+    (asserts! (>= publish-time last-publish-time) ERR_TIME_REGRESSION)
+    (ok true)))
