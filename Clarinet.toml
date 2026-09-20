@@ -8,3 +8,8 @@ cache_dir = "./.cache"
 [repl.analysis]
 passes = ["check_checker"]
 check_checker = { trusted_sender = false, trusted_caller = false, callee_filter = false }
+
+[contracts.price-policy]
+path = "contracts/price-policy.clar"
+clarity_version = 3
+epoch = "3.0"
