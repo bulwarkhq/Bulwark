@@ -77,4 +77,32 @@ describe("price-policy", () => {
       expect(conf(1_000e8 + 1)).toBeErr(err(6005));
     });
   });
+
+  describe("check-ema-deviation", () => {
+    // Pyth publishes its own EMA: a free reference for "is this tick off-market?"
+    const EMA = 100_000e8;
+    const dev = (price: number, ema = EMA) =>
+      policy("check-ema-deviation", [Cl.uint(price), Cl.uint(ema), Cl.uint(300)]); // 3%
+
+    it("accepts a price close to the ema", () => {
+      expect(dev(101_000e8)).toBeOk(Cl.bool(true));
+    });
+
+    it("accepts a deviation exactly at the limit, above or below", () => {
+      expect(dev(103_000e8)).toBeOk(Cl.bool(true));
+      expect(dev(97_000e8)).toBeOk(Cl.bool(true));
+    });
+
+    it("rejects a price too far above the ema", () => {
+      expect(dev(103_000e8 + 1)).toBeErr(err(6006));
+    });
+
+    it("rejects a price too far below the ema", () => {
+      expect(dev(97_000e8 - 1)).toBeErr(err(6006));
+    });
+
+    it("skips the check when the feed has no ema yet", () => {
+      expect(dev(150_000e8, 0)).toBeOk(Cl.bool(true));
+    });
+  });
 });

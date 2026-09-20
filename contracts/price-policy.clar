@@ -7,6 +7,7 @@
 (define-constant ERR_STALE (err u6003))
 (define-constant ERR_FUTURE (err u6004))
 (define-constant ERR_LOW_CONFIDENCE (err u6005))
+(define-constant ERR_EMA_DEVIATION (err u6006))
 (define-constant ERR_BAD_PRICE (err u6008))
 (define-constant ERR_BAD_EXPO (err u6014))
 
@@ -40,3 +41,15 @@
   (begin
     (asserts! (<= (* conf BPS) (* price max-conf-bps)) ERR_LOW_CONFIDENCE)
     (ok true)))
+
+;; Reject prices that sit too far from Pyth's own exponential moving average.
+;; A feed with no ema yet (0) cannot be judged, so it passes.
+(define-read-only (check-ema-deviation (price uint) (ema uint) (max-dev-bps uint))
+  (begin
+    (asserts! (or (is-eq ema u0)
+                  (<= (* (abs-diff price ema) BPS) (* ema max-dev-bps)))
+              ERR_EMA_DEVIATION)
+    (ok true)))
+
+(define-private (abs-diff (a uint) (b uint))
+  (if (> a b) (- a b) (- b a)))
