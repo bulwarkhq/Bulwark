@@ -32,4 +32,31 @@ describe("price-policy", () => {
       expect(normalize(5, -19)).toBeErr(err(6014));
     });
   });
+
+  describe("check-fresh", () => {
+    const NOW = 1_000_000;
+    const MAX_AGE = 30;
+    const fresh = (publishTime: number) =>
+      policy("check-fresh", [Cl.uint(publishTime), Cl.uint(NOW), Cl.uint(MAX_AGE)]);
+
+    it("accepts a price published just now", () => {
+      expect(fresh(NOW)).toBeOk(Cl.bool(true));
+    });
+
+    it("accepts a price exactly max-age old", () => {
+      expect(fresh(NOW - MAX_AGE)).toBeOk(Cl.bool(true));
+    });
+
+    it("rejects a price older than max-age", () => {
+      expect(fresh(NOW - MAX_AGE - 1)).toBeErr(err(6003));
+    });
+
+    it("tolerates a small clock skew into the future", () => {
+      expect(fresh(NOW + 10)).toBeOk(Cl.bool(true));
+    });
+
+    it("rejects a price stamped too far in the future", () => {
+      expect(fresh(NOW + 11)).toBeErr(err(6004));
+    });
+  });
 });
