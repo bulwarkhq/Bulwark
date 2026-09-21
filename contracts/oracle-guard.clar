@@ -4,6 +4,8 @@
 ;; price and the circuit breaker; every judgement about a price is delegated to
 ;; price-policy.
 
+(use-trait storage-trait .pyth-traits-v2.storage-trait)
+
 (define-constant ERR_NOT_ADMIN (err u6000))
 (define-constant ERR_BAD_CONFIG (err u6010))
 
@@ -61,6 +63,14 @@
       step-window: step-window,
       cooldown: cooldown,
     }))))
+
+;; The one call a consumer protocol makes instead of reading Pyth directly.
+(define-public (get-safe-price (feed (buff 32)) (storage <storage-trait>))
+  (let ((entry (try! (contract-call? storage read feed))))
+    (ok {
+      price: (try! (contract-call? .price-policy normalize (get price entry) (get expo entry))),
+      publish-time: (get publish-time entry),
+    })))
 
 (define-private (require-admin)
   (ok (asserts! (is-eq tx-sender (var-get admin)) ERR_NOT_ADMIN)))

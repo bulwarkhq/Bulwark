@@ -1,11 +1,17 @@
 import { describe, it, expect } from "vitest";
 import { Cl } from "@stacks/transactions";
-import { FEED, GUARD_CFG, deployer, err, feedConfigArgs, storagePrincipal, stranger } from "./helpers";
+import { FEED, GUARD_CFG, deployer, err, feedConfigArgs, setPrice, storagePrincipal, stranger } from "./helpers";
 
 const guard = (fn: string, args: any[] = [], sender = deployer()) =>
   simnet.callPublicFn("oracle-guard", fn, args, sender);
 const read = (fn: string, args: any[] = []) =>
   simnet.callReadOnlyFn("oracle-guard", fn, args, deployer()).result;
+
+const configure = () => {
+  guard("set-approved-storage", [storagePrincipal()]);
+  guard("set-feed-config", feedConfigArgs());
+};
+const safePrice = (storage = storagePrincipal()) => guard("get-safe-price", [FEED, storage]);
 
 describe("oracle-guard", () => {
   describe("approved storage", () => {
@@ -90,6 +96,16 @@ describe("oracle-guard", () => {
     it("refuses a handover from anyone else", () => {
       expect(guard("set-admin", [Cl.principal(stranger())], stranger()).result).toBeErr(err(6000));
       expect(read("get-admin")).toStrictEqual(Cl.principal(deployer()));
+    });
+  });
+
+  describe("get-safe-price", () => {
+    it("returns a healthy price normalized to 8 decimals with its publish time", () => {
+      configure();
+      const { publishTime } = setPrice(100_000);
+      expect(safePrice().result).toBeOk(
+        Cl.tuple({ price: Cl.uint(100_000e8), "publish-time": Cl.uint(publishTime) }),
+      );
     });
   });
 });
