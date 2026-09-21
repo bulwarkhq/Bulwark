@@ -148,4 +148,69 @@ describe("liquidity-pool", () => {
       expect(pool("remove-liquidity", [Cl.uint(39_000_000)], lp1).result).toBeOk(expect.anything());
     });
   });
+
+  describe("settle", () => {
+    const market = wallet(3);
+    const trader = market; // the market wallet stands in as the trader in these tests
+    const settle = (collateral: number, reserve: number, payout: number, sender = market) =>
+      pool("settle", [Cl.principal(trader), Cl.uint(collateral), Cl.uint(reserve), Cl.uint(payout)], sender);
+    const invariantHolds = () => contractBalance("liquidity-pool") === state().liquidity + state().locked;
+
+    beforeEach(() => {
+      mintSbtc(market, ONE_SBTC);
+      pool("set-market", [Cl.principal(market)]);
+      pool("add-liquidity", [Cl.uint(ONE_SBTC)], lp1);
+      pool("take-collateral", [Cl.principal(trader), Cl.uint(1_000_000), Cl.uint(1_000), Cl.uint(2_997_000)], market);
+      // locked is now 999_000, reserved 2_997_000, liquidity ONE_SBTC + 1_000
+    });
+
+    it("refuses anyone but the market", () => {
+      expect(settle(999_000, 2_997_000, 0, lp1).result).toBeErr(err(9001));
+    });
+
+    it("on a loss, pays the trader what is left and keeps the rest for LPs", () => {
+      const before = sbtcBalance(trader);
+      expect(settle(999_000, 2_997_000, 400_000).result).toBeOk(Cl.bool(true));
+      expect(sbtcBalance(trader) - before).toBe(400_000);
+      expect(state()).toMatchObject({ liquidity: ONE_SBTC + 1_000 + 599_000, locked: 0, reserved: 0 });
+      expect(invariantHolds()).toBe(true);
+    });
+
+    it("on a win, pays out more than the collateral from LP liquidity", () => {
+      const before = sbtcBalance(trader);
+      expect(settle(999_000, 2_997_000, 1_999_000).result).toBeOk(Cl.bool(true));
+      expect(sbtcBalance(trader) - before).toBe(1_999_000);
+      expect(state()).toMatchObject({ liquidity: ONE_SBTC + 1_000 - 1_000_000, locked: 0, reserved: 0 });
+      expect(invariantHolds()).toBe(true);
+    });
+
+    it("handles a total loss with nothing to pay out", () => {
+      expect(settle(999_000, 2_997_000, 0).result).toBeOk(Cl.bool(true));
+      expect(state().liquidity).toBe(ONE_SBTC + 1_000 + 999_000);
+      expect(invariantHolds()).toBe(true);
+    });
+
+    it("cannot pay out more than liquidity plus the released collateral", () => {
+      expect(settle(999_000, 2_997_000, ONE_SBTC + 1_000 + 999_001).result).toBeErr(err(9007));
+    });
+
+    it("cannot release more than is locked or reserved", () => {
+      expect(settle(999_001, 2_997_000, 0).result).toBeErr(err(9008));
+      expect(settle(999_000, 2_997_001, 0).result).toBeErr(err(9008));
+    });
+  });
+
+  describe("LP share value", () => {
+    it("rises when the pool earns, so later depositors get fewer shares", () => {
+      const market = wallet(3);
+      mintSbtc(market, ONE_SBTC);
+      pool("set-market", [Cl.principal(market)]);
+      pool("add-liquidity", [Cl.uint(ONE_SBTC)], lp1);
+      pool("take-collateral", [Cl.principal(market), Cl.uint(1_000_000), Cl.uint(1_000), Cl.uint(0)], market);
+      pool("settle", [Cl.principal(market), Cl.uint(999_000), Cl.uint(0), Cl.uint(0)], market); // total loss
+      // liquidity is now ONE_SBTC + 1_000_000 for ONE_SBTC shares
+      const minted = pool("add-liquidity", [Cl.uint(ONE_SBTC)], lp2).result as any;
+      expect(Number(minted.value.value)).toBeLessThan(ONE_SBTC);
+    });
+  });
 });

@@ -14,6 +14,8 @@
 (define-constant ERR_NO_SHARES (err u9004))
 (define-constant ERR_RESERVED (err u9005))
 (define-constant ERR_RESERVE_UNCOVERED (err u9006))
+(define-constant ERR_PAYOUT_TOO_LARGE (err u9007))
+(define-constant ERR_UNKNOWN_LOCK (err u9008))
 
 ;; A tiny first deposit followed by a donation can round later LPs' shares to
 ;; zero; a floor on the first deposit makes that attack uneconomic.
@@ -85,6 +87,23 @@
     (var-set liquidity (+ (var-get liquidity) fee))
     (var-set locked (+ (var-get locked) (- amount fee)))
     (var-set reserved (+ (var-get reserved) reserve))
+    (ok true)))
+
+;; Market only. Close out a position: release its locked collateral and reserve,
+;; pay `payout` to `recipient`, and let LP liquidity absorb the difference. A
+;; payout above the collateral is funded by liquidity (the reserve guarantees
+;; it is there); below it, the shortfall becomes LP profit.
+(define-public (settle (recipient principal) (collateral uint) (reserve uint) (payout uint))
+  (begin
+    (try! (require-market))
+    (asserts! (and (<= collateral (var-get locked)) (<= reserve (var-get reserved))) ERR_UNKNOWN_LOCK)
+    (asserts! (<= payout (+ (var-get liquidity) collateral)) ERR_PAYOUT_TOO_LARGE)
+    (var-set locked (- (var-get locked) collateral))
+    (var-set reserved (- (var-get reserved) reserve))
+    (var-set liquidity (- (+ (var-get liquidity) collateral) payout))
+    (if (> payout u0)
+      (try! (as-contract (contract-call? .mock-sbtc transfer payout tx-sender recipient none)))
+      true)
     (ok true)))
 
 (define-private (require-market)
