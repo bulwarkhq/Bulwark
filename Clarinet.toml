@@ -28,3 +28,8 @@ epoch = "3.0"
 path = "contracts/fake-pyth-storage.clar"
 clarity_version = 3
 epoch = "3.0"
+
+[contracts.oracle-guard]
+path = "contracts/oracle-guard.clar"
+clarity_version = 3
+epoch = "3.0"
