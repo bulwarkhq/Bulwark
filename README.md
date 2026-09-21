@@ -128,11 +128,22 @@ Stated plainly, because this is a prototype:
 - **The guard is tested against real Pyth; the perps market is not.** Unit tests use a mock Pyth storage. The mainnet forks exercise `oracle-guard` against the real `pyth-storage-v4`, but `liquidity-pool` and `perps-market` still run on a mock sBTC token; they have not been run against the real sBTC contract.
 - **Deployment wiring not done yet.** For the fork tests, `scripts/build-mainnet-fork.mjs` rewrites the local Pyth trait import to the real `SP1CGXWEAMG6P6FT04W66NVGJ7PQWMDAC19R7PJ0Y.pyth-traits-v2`. A production deployment needs the same change, and the market needs the real sBTC principal in place of the mock.
 
+## Beyond Pyth
+
+Bulwark targets Pyth today, and that is deliberate: it is where a concrete, documented gap was verified. The design is not tied to Pyth throughout, though.
+
+- **Already source-agnostic:** the `price-policy` rules (freshness, time order, sudden-move limit) take plain numbers, the circuit breaker only needs a timestamp, and `price-source-trait` is the only interface consumers depend on.
+- **Pyth-specific:** the input format (Pyth's storage record and trait), and two rules that use fields only Pyth publishes: the confidence interval and the EMA.
+- **Other sources:** the Stacks docs also list DIA as a price oracle, and DEX prices are another candidate. Neither has been reviewed here, so how much of the guard carries over is untested.
+
+The planned approach is one small adapter per source that maps its format to a common shape (price, publish time, and optional confidence and reference price), so the guard applies every rule the source can support. This is roadmap, not built.
+
 ## Roadmap
 
 1. Run the market and pool against the real sBTC in the fork, then a testnet deployment.
 2. Request/execute settlement to close the latency window.
 3. Independent review and audit preparation; open-source the guard as a drop-in for other Stacks protocols.
+4. Source adapters, so the same guard can protect prices from oracles other than Pyth.
 
 ## License
 
