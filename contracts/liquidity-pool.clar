@@ -9,6 +9,7 @@
 
 (define-constant ERR_BAD_AMOUNT (err u9002))
 (define-constant ERR_INITIAL_LIQUIDITY (err u9003))
+(define-constant ERR_NO_SHARES (err u9004))
 
 ;; A tiny first deposit followed by a donation can round later LPs' shares to
 ;; zero; a floor on the first deposit makes that attack uneconomic.
@@ -33,11 +34,36 @@
   (default-to u0 (map-get? shares who)))
 
 (define-public (add-liquidity (amount uint))
-  (let ((minted amount))
+  (let ((minted (shares-for amount)))
     (asserts! (> amount u0) ERR_BAD_AMOUNT)
-    (asserts! (>= amount MIN_INITIAL_LIQUIDITY) ERR_INITIAL_LIQUIDITY)
+    (asserts! (or (> (var-get total-shares) u0) (>= amount MIN_INITIAL_LIQUIDITY)) ERR_INITIAL_LIQUIDITY)
+    (asserts! (> minted u0) ERR_NO_SHARES)
     (try! (contract-call? .mock-sbtc transfer amount tx-sender (as-contract tx-sender) none))
     (var-set liquidity (+ (var-get liquidity) amount))
     (var-set total-shares (+ (var-get total-shares) minted))
     (map-set shares tx-sender (+ (get-shares tx-sender) minted))
     (ok minted)))
+
+(define-public (remove-liquidity (burn uint))
+  (let (
+      (recipient tx-sender)
+      (amount (amount-for burn))
+    )
+    (asserts! (and (> burn u0) (<= burn (get-shares tx-sender))) ERR_NO_SHARES)
+    (map-set shares recipient (- (get-shares recipient) burn))
+    (var-set total-shares (- (var-get total-shares) burn))
+    (var-set liquidity (- (var-get liquidity) amount))
+    (try! (as-contract (contract-call? .mock-sbtc transfer amount tx-sender recipient none)))
+    (ok amount)))
+
+;; Shares minted for a deposit: 1:1 into an empty pool, pro-rata otherwise.
+(define-private (shares-for (amount uint))
+  (if (is-eq (var-get total-shares) u0)
+    amount
+    (/ (* amount (var-get total-shares)) (var-get liquidity))))
+
+;; sBTC owed for burning shares.
+(define-private (amount-for (burn uint))
+  (if (is-eq (var-get total-shares) u0)
+    u0
+    (/ (* burn (var-get liquidity)) (var-get total-shares))))

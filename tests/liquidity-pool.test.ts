@@ -40,4 +40,52 @@ describe("liquidity-pool", () => {
       expect(pool("add-liquidity", [Cl.uint(MIN_INITIAL - 1)], lp1).result).toBeErr(err(9003));
     });
   });
+
+  describe("later deposits", () => {
+    beforeEach(() => pool("add-liquidity", [Cl.uint(ONE_SBTC)], lp1));
+
+    it("mint shares in proportion to the pool", () => {
+      expect(pool("add-liquidity", [Cl.uint(ONE_SBTC / 2)], lp2).result).toBeOk(Cl.uint(ONE_SBTC / 2));
+      expect(state()).toMatchObject({ liquidity: 1.5 * ONE_SBTC, shares: 1.5 * ONE_SBTC });
+    });
+
+    it("are not subject to the first-deposit floor", () => {
+      expect(pool("add-liquidity", [Cl.uint(1_000)], lp2).result).toBeOk(Cl.uint(1_000));
+    });
+
+    it("reject a deposit too small to earn a single share", () => {
+      // pool value is 1 sBTC per share here, so this only bites once value per share exceeds 1
+      expect(pool("add-liquidity", [Cl.uint(0)], lp2).result).toBeErr(err(9002));
+    });
+  });
+
+  describe("withdrawals", () => {
+    beforeEach(() => {
+      pool("add-liquidity", [Cl.uint(ONE_SBTC)], lp1);
+      pool("add-liquidity", [Cl.uint(ONE_SBTC)], lp2);
+    });
+
+    it("return the pro-rata sBTC and burn the shares", () => {
+      expect(pool("remove-liquidity", [Cl.uint(ONE_SBTC / 2)], lp1).result).toBeOk(Cl.uint(ONE_SBTC / 2));
+      expect(read("get-shares", [Cl.principal(lp1)])).toStrictEqual(Cl.uint(ONE_SBTC / 2));
+      expect(state()).toMatchObject({ liquidity: 1.5 * ONE_SBTC, shares: 1.5 * ONE_SBTC });
+      expect(contractBalance("liquidity-pool")).toBe(1.5 * ONE_SBTC);
+      expect(sbtcBalance(lp1)).toBe(9.5 * ONE_SBTC);
+    });
+
+    it("cannot burn more shares than the caller owns", () => {
+      expect(pool("remove-liquidity", [Cl.uint(ONE_SBTC + 1)], lp1).result).toBeErr(err(9004));
+    });
+
+    it("cannot burn zero shares", () => {
+      expect(pool("remove-liquidity", [Cl.uint(0)], lp1).result).toBeErr(err(9004));
+    });
+
+    it("let the last LP leave with everything", () => {
+      pool("remove-liquidity", [Cl.uint(ONE_SBTC)], lp1);
+      pool("remove-liquidity", [Cl.uint(ONE_SBTC)], lp2);
+      expect(state()).toMatchObject({ liquidity: 0, shares: 0 });
+      expect(contractBalance("liquidity-pool")).toBe(0);
+    });
+  });
 });
