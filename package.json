@@ -13,5 +13,6 @@
     "@stacks/transactions": "^7.0.0",
     "vitest": "^3.0.0",
     "vitest-environment-clarinet": "^3.0.2"
-  }
+  },
+  "license": "MIT"
 }

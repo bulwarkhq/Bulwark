@@ -116,4 +116,4 @@ Stated plainly, because this is a prototype:
 
 ## License
 
-To be decided before release.
+MIT. See [LICENSE](LICENSE).
