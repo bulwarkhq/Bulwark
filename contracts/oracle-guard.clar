@@ -8,7 +8,8 @@
 
 (define-constant ERR_NOT_ADMIN (err u6000))
 (define-constant ERR_PAUSED (err u6001))
-(define-constant ERR_EMA_DEVIATION_CODE u6006)
+(define-constant REASON_EMA_DEVIATION u6006)
+(define-constant REASON_SUDDEN_MOVE u6007)
 (define-constant ERR_FEED_NOT_CONFIGURED (err u6002))
 (define-constant ERR_UNAPPROVED_STORAGE (err u6011))
 (define-constant ERR_BAD_CONFIG (err u6010))
@@ -70,10 +71,9 @@
     (if (is-some (map-get? tripped feed))
       (ok false)
       (let ((entry (try! (contract-call? storage read feed))))
-        (if (is-err (contract-call? .price-policy check-ema-deviation
-              (to-uint (get price entry)) (positive-or-zero (get ema-price entry)) (get max-ema-dev-bps cfg)))
+        (match (anomaly-reason cfg entry (map-get? last-accepted feed)) reason
           (begin
-            (map-set tripped feed { at: (block-time), reason: ERR_EMA_DEVIATION_CODE })
+            (map-set tripped feed { at: (block-time), reason: reason })
             (ok true))
           (ok false))))))
 
@@ -145,6 +145,30 @@
         (get price previous) (get accepted-at previous) price
         (block-time) (get max-step-bps cfg) (get step-window cfg)))
     (ok true)))
+
+;; Why this raw entry should trip the breaker, if it should.
+(define-private (anomaly-reason
+    (cfg { max-age: uint, max-conf-bps: uint, max-ema-dev-bps: uint, max-step-bps: uint, step-window: uint, cooldown: uint })
+    (entry { price: int, conf: uint, expo: int, ema-price: int, ema-conf: uint, publish-time: uint, prev-publish-time: uint })
+    (last (optional { price: uint, publish-time: uint, accepted-at: uint })))
+  (if (is-err (contract-call? .price-policy check-ema-deviation
+        (to-uint (get price entry)) (positive-or-zero (get ema-price entry)) (get max-ema-dev-bps cfg)))
+    (some REASON_EMA_DEVIATION)
+    (if (is-sudden-move cfg entry last)
+      (some REASON_SUDDEN_MOVE)
+      none)))
+
+(define-private (is-sudden-move
+    (cfg { max-age: uint, max-conf-bps: uint, max-ema-dev-bps: uint, max-step-bps: uint, step-window: uint, cooldown: uint })
+    (entry { price: int, conf: uint, expo: int, ema-price: int, ema-conf: uint, publish-time: uint, prev-publish-time: uint })
+    (last (optional { price: uint, publish-time: uint, accepted-at: uint })))
+  (match last previous
+    (match (contract-call? .price-policy normalize (get price entry) (get expo entry)) price
+      (is-err (contract-call? .price-policy check-step
+        (get price previous) (get accepted-at previous) price
+        (block-time) (get max-step-bps cfg) (get step-window cfg)))
+      error false)
+    false))
 
 (define-private (positive-or-zero (value int))
   (if (> value 0) (to-uint value) u0))

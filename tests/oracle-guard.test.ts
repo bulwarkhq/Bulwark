@@ -299,4 +299,32 @@ describe("oracle-guard", () => {
       expect(guard("poke", [Cl.bufferFromHex("00".repeat(32)), storagePrincipal()], stranger()).result).toBeErr(err(6002));
     });
   });
+
+  describe("circuit breaker: poke on sudden moves", () => {
+    const poke = () => guard("poke", [FEED, storagePrincipal()], stranger());
+    beforeEach(() => configure());
+
+    it("trips on a jump beyond the step limit even when the ema followed", () => {
+      setPrice(100_000);
+      safePrice();
+      setPrice(108_000, { emaUsd: 108_000 });
+      expect(poke().result).toBeOk(Cl.bool(true));
+      expect((read("get-trip", [FEED]) as any).value.value.reason).toStrictEqual(Cl.uint(6007));
+    });
+
+    it("stays quiet on a small move", () => {
+      setPrice(100_000);
+      safePrice();
+      setPrice(102_000, { emaUsd: 102_000 });
+      expect(poke().result).toBeOk(Cl.bool(false));
+    });
+
+    it("stays quiet on a big move once the step window has passed", () => {
+      setPrice(100_000);
+      safePrice();
+      advance(GUARD_CFG.stepWindow + 30);
+      setPrice(108_000, { emaUsd: 108_000 });
+      expect(poke().result).toBeOk(Cl.bool(false));
+    });
+  });
 });
