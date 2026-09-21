@@ -57,3 +57,18 @@ export function setPrice(
 export function advance(secs: number) {
   simnet.mineEmptyStacksBlocks(Math.ceil(secs / 10));
 }
+
+export const wallet = (n: number) => accounts().get(`wallet_${n}`)!;
+
+export function mintSbtc(to: string, amount: number) {
+  return simnet.callPublicFn("mock-sbtc", "mint", [Cl.uint(amount), Cl.principal(to)], simnet.deployer);
+}
+
+export function sbtcBalance(who: string): number {
+  const r = simnet.callReadOnlyFn("mock-sbtc", "get-balance", [Cl.principal(who)], simnet.deployer).result as any;
+  return Number(r.value.value);
+}
+
+export const contractBalance = (name: string) => sbtcBalance(`${simnet.deployer}.${name}`);
+
+export const num = (cv: any, key: string): number => Number(cv.value[key].value);

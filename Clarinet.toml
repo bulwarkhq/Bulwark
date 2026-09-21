@@ -43,3 +43,13 @@ epoch = "3.0"
 path = "contracts/trait-caller.clar"
 clarity_version = 3
 epoch = "3.0"
+
+[contracts.sip-010-trait]
+path = "contracts/sip-010-trait.clar"
+clarity_version = 3
+epoch = "3.0"
+
+[contracts.mock-sbtc]
+path = "contracts/mock-sbtc.clar"
+clarity_version = 3
+epoch = "3.0"
