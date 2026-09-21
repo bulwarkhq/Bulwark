@@ -74,10 +74,17 @@
         (try! (require-approved storage))
         (try! (contract-call? storage read feed))))
     )
+    (try! (contract-call? .price-policy check-fresh (get publish-time entry) (block-time) (get max-age cfg)))
     (ok {
       price: (try! (contract-call? .price-policy normalize (get price entry) (get expo entry))),
       publish-time: (get publish-time entry),
     })))
+
+;; Chain time as of the previous block; 0 at genesis.
+(define-private (block-time)
+  (if (> stacks-block-height u0)
+    (default-to u0 (get-stacks-block-info? time (- stacks-block-height u1)))
+    u0))
 
 (define-private (require-approved (storage <storage-trait>))
   (ok (asserts! (is-eq (some (contract-of storage)) (var-get approved-storage)) ERR_UNAPPROVED_STORAGE)))

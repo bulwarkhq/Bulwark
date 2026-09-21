@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeEach } from "vitest";
 import { Cl } from "@stacks/transactions";
 import { FEED, GUARD_CFG, deployer, err, feedConfigArgs, setPrice, storagePrincipal, stranger } from "./helpers";
 
@@ -126,6 +126,20 @@ describe("oracle-guard", () => {
       configure();
       setPrice(100_000, { storage: "fake-pyth-storage" });
       expect(safePrice(storagePrincipal("fake-pyth-storage")).result).toBeErr(err(6011));
+    });
+  });
+
+  describe("get-safe-price freshness", () => {
+    beforeEach(configure);
+
+    it("rejects a price older than the feed's max-age", () => {
+      setPrice(100_000, { ageSecs: 120 });
+      expect(safePrice().result).toBeErr(err(6003));
+    });
+
+    it("rejects a price stamped in the future", () => {
+      setPrice(100_000, { ageSecs: -120 });
+      expect(safePrice().result).toBeErr(err(6004));
     });
   });
 });
