@@ -8,6 +8,7 @@
 
 (define-constant ERR_NOT_ADMIN (err u6000))
 (define-constant ERR_PAUSED (err u6001))
+(define-constant ERR_EMA_DEVIATION_CODE u6006)
 (define-constant ERR_FEED_NOT_CONFIGURED (err u6002))
 (define-constant ERR_UNAPPROVED_STORAGE (err u6011))
 (define-constant ERR_BAD_CONFIG (err u6010))
@@ -56,6 +57,25 @@
   (begin
     (try! (require-admin))
     (ok (map-delete tripped feed))))
+
+(define-read-only (get-trip (feed (buff 32)))
+  (map-get? tripped feed))
+
+;; Permissionless keeper call. A failing read reverts all state, so it cannot
+;; persist a trip; poke is the call that does. It trips only on a price that
+;; is off-market against Pyth's own ema, never on a merely stale or wide one.
+(define-public (poke (feed (buff 32)) (storage <storage-trait>))
+  (let ((cfg (unwrap! (map-get? feeds feed) ERR_FEED_NOT_CONFIGURED)))
+    (try! (require-approved storage))
+    (if (is-some (map-get? tripped feed))
+      (ok false)
+      (let ((entry (try! (contract-call? storage read feed))))
+        (if (is-err (contract-call? .price-policy check-ema-deviation
+              (to-uint (get price entry)) (positive-or-zero (get ema-price entry)) (get max-ema-dev-bps cfg)))
+          (begin
+            (map-set tripped feed { at: (block-time), reason: ERR_EMA_DEVIATION_CODE })
+            (ok true))
+          (ok false))))))
 
 (define-read-only (get-approved-storage)
   (var-get approved-storage))

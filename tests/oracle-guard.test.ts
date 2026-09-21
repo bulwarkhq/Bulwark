@@ -254,4 +254,49 @@ describe("oracle-guard", () => {
       expect(guard("admin-reset", [FEED], stranger()).result).toBeErr(err(6000));
     });
   });
+
+  describe("circuit breaker: poke", () => {
+    const poke = (storage = storagePrincipal()) => guard("poke", [FEED, storage], stranger());
+    const trip = () => (read("get-trip", [FEED]) as any).value?.value;
+    beforeEach(() => configure());
+
+    it("trips on a price far from Pyth's ema and records why", () => {
+      setPrice(108_000, { emaUsd: 100_000 });
+      expect(poke().result).toBeOk(Cl.bool(true));
+      expect(read("is-tripped", [FEED])).toStrictEqual(Cl.bool(true));
+      expect(trip().reason).toStrictEqual(Cl.uint(6006));
+    });
+
+    it("keeps refusing prices afterwards, even healthy ones", () => {
+      setPrice(108_000, { emaUsd: 100_000 });
+      poke();
+      setPrice(100_000);
+      expect(safePrice().result).toBeErr(err(6001));
+    });
+
+    it("does nothing on a healthy price", () => {
+      setPrice(100_000);
+      expect(poke().result).toBeOk(Cl.bool(false));
+      expect(read("is-tripped", [FEED])).toStrictEqual(Cl.bool(false));
+    });
+
+    it("does not trip on a price that is merely stale", () => {
+      setPrice(100_000, { ageSecs: 300 });
+      expect(poke().result).toBeOk(Cl.bool(false));
+    });
+
+    it("does nothing when the feed is already tripped", () => {
+      guard("admin-trip", [FEED]);
+      setPrice(108_000, { emaUsd: 100_000 });
+      expect(poke().result).toBeOk(Cl.bool(false));
+    });
+
+    it("refuses an impostor storage contract", () => {
+      expect(poke(storagePrincipal("fake-pyth-storage")).result).toBeErr(err(6011));
+    });
+
+    it("refuses an unconfigured feed", () => {
+      expect(guard("poke", [Cl.bufferFromHex("00".repeat(32)), storagePrincipal()], stranger()).result).toBeErr(err(6002));
+    });
+  });
 });
