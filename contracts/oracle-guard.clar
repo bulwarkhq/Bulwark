@@ -76,6 +76,7 @@
     )
     (try! (contract-call? .price-policy check-fresh (get publish-time entry) (block-time) (get max-age cfg)))
     (try! (contract-call? .price-policy check-confidence (get conf entry) (to-uint (get price entry)) (get max-conf-bps cfg)))
+    (try! (contract-call? .price-policy check-ema-deviation (to-uint (get price entry)) (positive-or-zero (get ema-price entry)) (get max-ema-dev-bps cfg)))
     (ok {
       price: (try! (contract-call? .price-policy normalize (get price entry) (get expo entry))),
       publish-time: (get publish-time entry),
@@ -86,6 +87,9 @@
   (if (> stacks-block-height u0)
     (default-to u0 (get-stacks-block-info? time (- stacks-block-height u1)))
     u0))
+
+(define-private (positive-or-zero (value int))
+  (if (> value 0) (to-uint value) u0))
 
 (define-private (require-approved (storage <storage-trait>))
   (ok (asserts! (is-eq (some (contract-of storage)) (var-get approved-storage)) ERR_UNAPPROVED_STORAGE)))

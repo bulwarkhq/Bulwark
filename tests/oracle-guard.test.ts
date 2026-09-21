@@ -151,4 +151,18 @@ describe("oracle-guard", () => {
       expect(safePrice().result).toBeErr(err(6005));
     });
   });
+
+  describe("get-safe-price ema sanity", () => {
+    beforeEach(configure);
+
+    it("rejects a price far from Pyth's own ema", () => {
+      setPrice(108_000, { emaUsd: 100_000 }); // limit is 300 bps
+      expect(safePrice().result).toBeErr(err(6006));
+    });
+
+    it("accepts a price within the ema band", () => {
+      setPrice(102_000, { emaUsd: 100_000 });
+      expect(safePrice().result).toBeOk(expect.anything());
+    });
+  });
 });
