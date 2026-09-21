@@ -58,3 +58,8 @@ epoch = "3.0"
 path = "contracts/liquidity-pool.clar"
 clarity_version = 3
 epoch = "3.0"
+
+[contracts.position-math]
+path = "contracts/position-math.clar"
+clarity_version = 3
+epoch = "3.0"
