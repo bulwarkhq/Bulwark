@@ -34,6 +34,12 @@
     (try! (require-admin))
     (ok (var-set admin new-admin))))
 
+;; Last price a consumer was served, normalized to 8 decimals.
+(define-map last-accepted (buff 32) { price: uint, publish-time: uint, accepted-at: uint })
+
+(define-read-only (get-last-accepted (feed (buff 32)))
+  (map-get? last-accepted feed))
+
 (define-read-only (get-approved-storage)
   (var-get approved-storage))
 
@@ -77,10 +83,9 @@
     (try! (contract-call? .price-policy check-fresh (get publish-time entry) (block-time) (get max-age cfg)))
     (try! (contract-call? .price-policy check-confidence (get conf entry) (to-uint (get price entry)) (get max-conf-bps cfg)))
     (try! (contract-call? .price-policy check-ema-deviation (to-uint (get price entry)) (positive-or-zero (get ema-price entry)) (get max-ema-dev-bps cfg)))
-    (ok {
-      price: (try! (contract-call? .price-policy normalize (get price entry) (get expo entry))),
-      publish-time: (get publish-time entry),
-    })))
+    (let ((price (try! (contract-call? .price-policy normalize (get price entry) (get expo entry)))))
+      (map-set last-accepted feed { price: price, publish-time: (get publish-time entry), accepted-at: (block-time) })
+      (ok { price: price, publish-time: (get publish-time entry) }))))
 
 ;; Chain time as of the previous block; 0 at genesis.
 (define-private (block-time)

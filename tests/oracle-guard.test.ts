@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { Cl } from "@stacks/transactions";
-import { FEED, GUARD_CFG, deployer, err, feedConfigArgs, setPrice, storagePrincipal, stranger } from "./helpers";
+import { FEED, GUARD_CFG, advance, deployer, err, feedConfigArgs, setPrice, storagePrincipal, stranger } from "./helpers";
 
 const guard = (fn: string, args: any[] = [], sender = deployer()) =>
   simnet.callPublicFn("oracle-guard", fn, args, sender);
@@ -163,6 +163,30 @@ describe("oracle-guard", () => {
     it("accepts a price within the ema band", () => {
       setPrice(102_000, { emaUsd: 100_000 });
       expect(safePrice().result).toBeOk(expect.anything());
+    });
+  });
+
+  describe("last accepted price", () => {
+    const lastAccepted = () => (read("get-last-accepted", [FEED]) as any).value?.value;
+    beforeEach(configure);
+
+    it("is empty before any price is served", () => {
+      expect(read("get-last-accepted", [FEED])).toBeNone();
+    });
+
+    it("remembers the price and publish time of the last accepted read", () => {
+      const { publishTime } = setPrice(100_000);
+      safePrice();
+      expect(lastAccepted().price).toStrictEqual(Cl.uint(100_000e8));
+      expect(lastAccepted()["publish-time"]).toStrictEqual(Cl.uint(publishTime));
+    });
+
+    it("keeps the previous price when a read is rejected", () => {
+      setPrice(100_000);
+      safePrice();
+      setPrice(108_000, { emaUsd: 100_000 });
+      expect(safePrice().result).toBeErr(err(6006));
+      expect(lastAccepted().price).toStrictEqual(Cl.uint(100_000e8));
     });
   });
 });

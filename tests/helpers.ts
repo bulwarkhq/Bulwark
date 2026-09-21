@@ -39,12 +39,12 @@ export function chainNow(): number {
 /** Publish a Pyth-style price (8 decimals) into a mock storage contract. */
 export function setPrice(
   usd: number,
-  o: { ageSecs?: number; confBps?: number; emaUsd?: number; storage?: string } = {},
+  o: { ageSecs?: number; at?: number; confBps?: number; emaUsd?: number; storage?: string } = {},
 ) {
   const price = Math.round(usd * 1e8);
   const ema = Math.round((o.emaUsd ?? usd) * 1e8);
   const conf = Math.round((price * (o.confBps ?? 1)) / 10000);
-  const publishTime = chainNow() - (o.ageSecs ?? 0);
+  const publishTime = o.at ?? chainNow() - (o.ageSecs ?? 0);
   simnet.callPublicFn(
     o.storage ?? "mock-pyth-storage",
     "set-price",
