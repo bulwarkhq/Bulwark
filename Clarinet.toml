@@ -73,3 +73,8 @@ epoch = "3.0"
 path = "contracts/perps-market.clar"
 clarity_version = 3
 epoch = "3.0"
+
+[contracts.naive-price-source]
+path = "contracts/naive-price-source.clar"
+clarity_version = 3
+epoch = "3.0"
