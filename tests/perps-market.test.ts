@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { Cl } from "@stacks/transactions";
-import { contractBalance, deployer, err, mintSbtc, num, principalOf, storagePrincipal, wallet } from "./helpers";
+import { contractBalance, deployer, err, mintSbtc, num, principalOf, sbtcBalance, storagePrincipal, wallet } from "./helpers";
 
 const ONE_SBTC = 100_000_000;
 const PRICE = 100_000e8;
@@ -47,6 +47,15 @@ describe("perps-market", () => {
       expect(marketRead("get-price-source")).toBeSome(SOURCE());
     });
 
+    it("passes through the source's failure when it has no quote", () => {
+      mintSbtc(lp, ONE_SBTC);
+      mintSbtc(trader, ONE_SBTC);
+      pool("set-market", [principalOf("perps-market")]);
+      pool("add-liquidity", [Cl.uint(ONE_SBTC)], lp);
+      market("set-price-source", [SOURCE()]);
+      expect(open(true, COLLATERAL, SIZE).result).toBeErr(Cl.uint(1));
+    });
+
     it("refuses to trade against a source that is not pinned", () => {
       mintSbtc(trader, ONE_SBTC);
       expect(open(true, COLLATERAL, SIZE).result).toBeErr(err(7001));
@@ -90,10 +99,45 @@ describe("perps-market", () => {
 
     it("tracks open interest by side", () => {
       open(true, COLLATERAL, SIZE);
-      open(false, COLLATERAL, 2 * SIZE);
+      open(false, 2 * COLLATERAL, 2 * SIZE);
       expect(marketRead("get-open-interest")).toStrictEqual(
         Cl.tuple({ long: Cl.uint(SIZE), short: Cl.uint(2 * SIZE) }),
       );
+    });
+  });
+
+  describe("open-position validation", () => {
+    beforeEach(() => {
+      mintSbtc(lp, 10 * ONE_SBTC);
+      mintSbtc(trader, ONE_SBTC);
+      pool("set-market", [principalOf("perps-market")]);
+      market("set-price-source", [SOURCE()]);
+      pool("add-liquidity", [Cl.uint(ONE_SBTC)], lp);
+      setQuote(PRICE, T0);
+    });
+
+    it("rejects collateral below the minimum", () => {
+      expect(open(true, 9_999, 9_999).result).toBeErr(err(7002));
+    });
+
+    it("rejects more than 5x leverage and empty positions", () => {
+      expect(open(true, COLLATERAL, 5 * COLLATERAL + 1).result).toBeErr(err(7003));
+      expect(open(true, COLLATERAL, 0).result).toBeErr(err(7003));
+    });
+
+    it("caps the reserved max profit at half of pool liquidity", () => {
+      // pool is 1 sBTC, so at most 0.5 sBTC may be reserved; 0.2 sBTC collateral reserves ~0.6
+      expect(open(true, 20_000_000, 20_000_000).result).toBeErr(err(7004));
+    });
+
+    it("counts existing reservations against the cap", () => {
+      expect(open(true, 10_000_000, 10_000_000).result).toBeOk(Cl.uint(1)); // reserves ~0.3
+      expect(open(false, 10_000_000, 10_000_000).result).toBeErr(err(7004)); // would reach ~0.6
+    });
+
+    it("fails cleanly when the trader lacks the funds", () => {
+      expect(sbtcBalance(keeper)).toBe(0);
+      expect(open(true, COLLATERAL, SIZE, keeper).result).toBeErr(expect.anything());
     });
   });
 });
