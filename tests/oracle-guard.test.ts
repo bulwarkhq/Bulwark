@@ -327,4 +327,60 @@ describe("oracle-guard", () => {
       expect(poke().result).toBeOk(Cl.bool(false));
     });
   });
+
+  describe("circuit breaker: resume", () => {
+    const resume = (storage = storagePrincipal()) => guard("resume", [FEED, storage], stranger());
+    const tripOnBadTick = () => {
+      setPrice(108_000, { emaUsd: 100_000 });
+      guard("poke", [FEED, storagePrincipal()], stranger());
+    };
+    beforeEach(() => configure());
+
+    it("errors when nothing is tripped", () => {
+      expect(resume().result).toBeErr(err(6012));
+    });
+
+    it("refuses to resume before the cooldown has passed", () => {
+      tripOnBadTick();
+      setPrice(100_000);
+      expect(resume().result).toBeErr(err(6013));
+    });
+
+    it("refuses to resume while the price is still unhealthy", () => {
+      tripOnBadTick();
+      advance(GUARD_CFG.cooldown + 10);
+      setPrice(108_000, { emaUsd: 100_000 });
+      expect(resume().result).toBeErr(err(6006));
+    });
+
+    it("lets anyone resume after the cooldown once the price is healthy", () => {
+      tripOnBadTick();
+      advance(GUARD_CFG.cooldown + 10);
+      setPrice(100_000);
+      expect(resume().result).toBeOk(Cl.uint(100_000e8));
+      expect(read("is-tripped", [FEED])).toStrictEqual(Cl.bool(false));
+    });
+
+    it("serves prices again after resuming", () => {
+      tripOnBadTick();
+      advance(GUARD_CFG.cooldown + 10);
+      setPrice(100_000);
+      resume();
+      setPrice(100_500);
+      expect(safePrice().result).toBeOk(expect.anything());
+    });
+
+    it("restarts the step baseline from the resume price", () => {
+      tripOnBadTick();
+      advance(GUARD_CFG.cooldown + 10);
+      setPrice(100_000);
+      resume();
+      expect((read("get-last-accepted", [FEED]) as any).value.value.price).toStrictEqual(Cl.uint(100_000e8));
+    });
+
+    it("refuses an impostor storage contract", () => {
+      tripOnBadTick();
+      expect(resume(storagePrincipal("fake-pyth-storage")).result).toBeErr(err(6011));
+    });
+  });
 });

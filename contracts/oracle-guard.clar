@@ -8,6 +8,8 @@
 
 (define-constant ERR_NOT_ADMIN (err u6000))
 (define-constant ERR_PAUSED (err u6001))
+(define-constant ERR_NOT_TRIPPED (err u6012))
+(define-constant ERR_COOLDOWN (err u6013))
 (define-constant REASON_EMA_DEVIATION u6006)
 (define-constant REASON_SUDDEN_MOVE u6007)
 (define-constant ERR_FEED_NOT_CONFIGURED (err u6002))
@@ -77,6 +79,23 @@
             (ok true))
           (ok false))))))
 
+;; After the feed's cooldown, anyone may lift the breaker if the price is
+;; healthy again. The step baseline restarts from the price used to resume.
+(define-public (resume (feed (buff 32)) (storage <storage-trait>))
+  (let (
+      (cfg (unwrap! (map-get? feeds feed) ERR_FEED_NOT_CONFIGURED))
+      (trip (unwrap! (map-get? tripped feed) ERR_NOT_TRIPPED))
+    )
+    (try! (require-approved storage))
+    (asserts! (>= (block-time) (+ (get at trip) (get cooldown cfg))) ERR_COOLDOWN)
+    (let (
+        (entry (try! (contract-call? storage read feed)))
+        (price (try! (judge-entry cfg entry)))
+      )
+      (map-delete tripped feed)
+      (map-set last-accepted feed { price: price, publish-time: (get publish-time entry), accepted-at: (block-time) })
+      (ok price))))
+
 (define-read-only (get-approved-storage)
   (var-get approved-storage))
 
@@ -118,10 +137,7 @@
         (try! (require-not-tripped feed))
         (try! (contract-call? storage read feed))))
     )
-    (try! (contract-call? .price-policy check-fresh (get publish-time entry) (block-time) (get max-age cfg)))
-    (try! (contract-call? .price-policy check-confidence (get conf entry) (to-uint (get price entry)) (get max-conf-bps cfg)))
-    (try! (contract-call? .price-policy check-ema-deviation (to-uint (get price entry)) (positive-or-zero (get ema-price entry)) (get max-ema-dev-bps cfg)))
-    (let ((price (try! (contract-call? .price-policy normalize (get price entry) (get expo entry)))))
+    (let ((price (try! (judge-entry cfg entry))))
       (try! (check-continuity cfg (map-get? last-accepted feed) price (get publish-time entry)))
       (map-set last-accepted feed { price: price, publish-time: (get publish-time entry), accepted-at: (block-time) })
       (ok { price: price, publish-time: (get publish-time entry) }))))
@@ -172,6 +188,17 @@
 
 (define-private (positive-or-zero (value int))
   (if (> value 0) (to-uint value) u0))
+
+;; Every single-entry rule: fresh, tight, near the ema, positive. Returns the
+;; price normalized to 8 decimals. Continuity is judged separately.
+(define-private (judge-entry
+    (cfg { max-age: uint, max-conf-bps: uint, max-ema-dev-bps: uint, max-step-bps: uint, step-window: uint, cooldown: uint })
+    (entry { price: int, conf: uint, expo: int, ema-price: int, ema-conf: uint, publish-time: uint, prev-publish-time: uint }))
+  (begin
+    (try! (contract-call? .price-policy check-fresh (get publish-time entry) (block-time) (get max-age cfg)))
+    (try! (contract-call? .price-policy check-confidence (get conf entry) (to-uint (get price entry)) (get max-conf-bps cfg)))
+    (try! (contract-call? .price-policy check-ema-deviation (to-uint (get price entry)) (positive-or-zero (get ema-price entry)) (get max-ema-dev-bps cfg)))
+    (contract-call? .price-policy normalize (get price entry) (get expo entry))))
 
 (define-private (require-not-tripped (feed (buff 32)))
   (ok (asserts! (is-none (map-get? tripped feed)) ERR_PAUSED)))
