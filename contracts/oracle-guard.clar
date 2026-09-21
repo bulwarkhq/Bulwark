@@ -5,9 +5,22 @@
 ;; price-policy.
 
 (define-constant ERR_NOT_ADMIN (err u6000))
+(define-constant ERR_BAD_CONFIG (err u6010))
+
+(define-constant BPS u10000)
 
 (define-data-var admin principal tx-sender)
 (define-data-var approved-storage (optional principal) none)
+
+;; max-age, step-window and cooldown are seconds; *-bps are basis points.
+(define-map feeds (buff 32) {
+  max-age: uint,
+  max-conf-bps: uint,
+  max-ema-dev-bps: uint,
+  max-step-bps: uint,
+  step-window: uint,
+  cooldown: uint,
+})
 
 (define-read-only (get-approved-storage)
   (var-get approved-storage))
@@ -16,6 +29,30 @@
   (begin
     (try! (require-admin))
     (ok (var-set approved-storage (some storage)))))
+
+(define-read-only (get-config (feed (buff 32)))
+  (map-get? feeds feed))
+
+(define-public (set-feed-config
+    (feed (buff 32))
+    (max-age uint) (max-conf-bps uint) (max-ema-dev-bps uint)
+    (max-step-bps uint) (step-window uint) (cooldown uint))
+  (begin
+    (try! (require-admin))
+    (asserts! (and (> max-age u0)
+                   (<= max-conf-bps BPS)
+                   (<= max-ema-dev-bps BPS)
+                   (> max-step-bps u0)
+                   (<= max-step-bps BPS))
+              ERR_BAD_CONFIG)
+    (ok (map-set feeds feed {
+      max-age: max-age,
+      max-conf-bps: max-conf-bps,
+      max-ema-dev-bps: max-ema-dev-bps,
+      max-step-bps: max-step-bps,
+      step-window: step-window,
+      cooldown: cooldown,
+    }))))
 
 (define-private (require-admin)
   (ok (asserts! (is-eq tx-sender (var-get admin)) ERR_NOT_ADMIN)))
