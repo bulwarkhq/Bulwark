@@ -8,7 +8,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "build:fork": "node scripts/build-mainnet-fork.mjs",
-    "test:mainnet": "node scripts/build-mainnet-fork.mjs && vitest run -c vitest.mainnet.config.js"
+    "test:mainnet": "node scripts/build-mainnet-fork.mjs && FORK=state vitest run -c vitest.mainnet.config.js && FORK=replay vitest run -c vitest.mainnet.config.js"
   },
   "devDependencies": {
     "@hirosystems/clarinet-sdk": "^3.8.1",

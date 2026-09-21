@@ -12,10 +12,15 @@ const PYTH_DEPLOYER = "SP1CGXWEAMG6P6FT04W66NVGJ7PQWMDAC19R7PJ0Y";
 const LOCAL_TRAIT = ".pyth-traits-v2";
 const REAL_TRAIT = `'${PYTH_DEPLOYER}.pyth-traits-v2`;
 
-// Pinned so results are reproducible. Override with FORK_HEIGHT to look elsewhere.
-export const DEFAULT_FORK_HEIGHT = 9_037_787;
+// Each named fork is pinned to a block so results are reproducible.
+//   state:  a recent block, where the real stored BTC price is 30+ days stale
+//   replay: the block before a real, successful Pyth update (fixtures/pyth-update.json)
+export const FORKS = {
+  state: 9_037_787,
+  replay: 8_517_360,
+};
 
-const OUT_DIR = ".mainnet-fork";
+const OUT_ROOT = ".mainnet-fork";
 const CONTRACTS = ["price-policy", "price-source-trait", "oracle-guard"];
 
 export const forkedSource = (source) => source.replaceAll(LOCAL_TRAIT, REAL_TRAIT);
@@ -41,16 +46,17 @@ export const manifest = (height, contracts) =>
     "",
   ].join("\n");
 
-function build(height) {
-  rmSync(OUT_DIR, { recursive: true, force: true });
-  mkdirSync(`${OUT_DIR}/contracts`, { recursive: true });
-  cpSync("settings", `${OUT_DIR}/settings`, { recursive: true });
-  for (const name of CONTRACTS) {
-    const source = readFileSync(`contracts/${name}.clar`, "utf8");
-    writeFileSync(`${OUT_DIR}/contracts/${name}.clar`, forkedSource(source));
+function build(name, height) {
+  const outDir = `${OUT_ROOT}/${name}`;
+  rmSync(outDir, { recursive: true, force: true });
+  mkdirSync(`${outDir}/contracts`, { recursive: true });
+  cpSync("settings", `${outDir}/settings`, { recursive: true });
+  for (const contract of CONTRACTS) {
+    const source = readFileSync(`contracts/${contract}.clar`, "utf8");
+    writeFileSync(`${outDir}/contracts/${contract}.clar`, forkedSource(source));
   }
-  writeFileSync(`${OUT_DIR}/Clarinet.toml`, manifest(height, CONTRACTS));
-  console.log(`built ${OUT_DIR} forking mainnet at height ${height}`);
+  writeFileSync(`${outDir}/Clarinet.toml`, manifest(height, CONTRACTS));
+  console.log(`built ${outDir}: forking mainnet at height ${height}`);
 }
 
-build(Number(process.env.FORK_HEIGHT ?? DEFAULT_FORK_HEIGHT));
+for (const [name, height] of Object.entries(FORKS)) build(name, height);
