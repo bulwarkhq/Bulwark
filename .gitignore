@@ -4,3 +4,4 @@ deployments/default.simnet-plan.yaml
 notes/
 *.log
 .env
+.mainnet-fork/

@@ -6,7 +6,9 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "build:fork": "node scripts/build-mainnet-fork.mjs",
+    "test:mainnet": "node scripts/build-mainnet-fork.mjs && vitest run -c vitest.mainnet.config.js"
   },
   "devDependencies": {
     "@hirosystems/clarinet-sdk": "^3.8.1",

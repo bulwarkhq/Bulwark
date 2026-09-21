@@ -4,6 +4,7 @@ import { vitestSetupFilePath, getClarinetVitestsArgv } from "@hirosystems/clarin
 export default defineConfig({
   test: {
     environment: "clarinet",
+    include: ["tests/**/*.test.ts"],
     pool: "forks",
     poolOptions: {
       threads: { singleThread: true },
