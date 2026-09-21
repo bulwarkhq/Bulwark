@@ -53,3 +53,8 @@ epoch = "3.0"
 path = "contracts/mock-sbtc.clar"
 clarity_version = 3
 epoch = "3.0"
+
+[contracts.liquidity-pool]
+path = "contracts/liquidity-pool.clar"
+clarity_version = 3
+epoch = "3.0"
