@@ -227,4 +227,31 @@ describe("oracle-guard", () => {
       expect(safePrice().result).toBeOk(expect.anything());
     });
   });
+
+  describe("circuit breaker: admin override", () => {
+    beforeEach(() => configure());
+
+    it("is not tripped by default", () => {
+      expect(read("is-tripped", [FEED])).toStrictEqual(Cl.bool(false));
+    });
+
+    it("lets the admin pause a feed, after which prices are refused", () => {
+      expect(guard("admin-trip", [FEED]).result).toBeOk(Cl.bool(true));
+      expect(read("is-tripped", [FEED])).toStrictEqual(Cl.bool(true));
+      setPrice(100_000);
+      expect(safePrice().result).toBeErr(err(6001));
+    });
+
+    it("lets the admin resume a paused feed", () => {
+      guard("admin-trip", [FEED]);
+      expect(guard("admin-reset", [FEED]).result).toBeOk(Cl.bool(true));
+      setPrice(100_000);
+      expect(safePrice().result).toBeOk(expect.anything());
+    });
+
+    it("refuses anyone else", () => {
+      expect(guard("admin-trip", [FEED], stranger()).result).toBeErr(err(6000));
+      expect(guard("admin-reset", [FEED], stranger()).result).toBeErr(err(6000));
+    });
+  });
 });

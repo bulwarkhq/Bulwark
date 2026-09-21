@@ -7,6 +7,7 @@
 (use-trait storage-trait .pyth-traits-v2.storage-trait)
 
 (define-constant ERR_NOT_ADMIN (err u6000))
+(define-constant ERR_PAUSED (err u6001))
 (define-constant ERR_FEED_NOT_CONFIGURED (err u6002))
 (define-constant ERR_UNAPPROVED_STORAGE (err u6011))
 (define-constant ERR_BAD_CONFIG (err u6010))
@@ -39,6 +40,22 @@
 
 (define-read-only (get-last-accepted (feed (buff 32)))
   (map-get? last-accepted feed))
+
+;; A tripped feed serves no prices until it is resumed.
+(define-map tripped (buff 32) { at: uint, reason: uint })
+
+(define-read-only (is-tripped (feed (buff 32)))
+  (is-some (map-get? tripped feed)))
+
+(define-public (admin-trip (feed (buff 32)))
+  (begin
+    (try! (require-admin))
+    (ok (map-set tripped feed { at: (block-time), reason: u0 }))))
+
+(define-public (admin-reset (feed (buff 32)))
+  (begin
+    (try! (require-admin))
+    (ok (map-delete tripped feed))))
 
 (define-read-only (get-approved-storage)
   (var-get approved-storage))
@@ -78,6 +95,7 @@
       (cfg (unwrap! (map-get? feeds feed) ERR_FEED_NOT_CONFIGURED))
       (entry (begin
         (try! (require-approved storage))
+        (try! (require-not-tripped feed))
         (try! (contract-call? storage read feed))))
     )
     (try! (contract-call? .price-policy check-fresh (get publish-time entry) (block-time) (get max-age cfg)))
@@ -110,6 +128,9 @@
 
 (define-private (positive-or-zero (value int))
   (if (> value 0) (to-uint value) u0))
+
+(define-private (require-not-tripped (feed (buff 32)))
+  (ok (asserts! (is-none (map-get? tripped feed)) ERR_PAUSED)))
 
 (define-private (require-approved (storage <storage-trait>))
   (ok (asserts! (is-eq (some (contract-of storage)) (var-get approved-storage)) ERR_UNAPPROVED_STORAGE)))
