@@ -101,7 +101,11 @@
     (price uint)
     (publish-time uint))
   (match last previous
-    (contract-call? .price-policy check-time-order (get publish-time previous) publish-time)
+    (begin
+      (try! (contract-call? .price-policy check-time-order (get publish-time previous) publish-time))
+      (contract-call? .price-policy check-step
+        (get price previous) (get accepted-at previous) price
+        (block-time) (get max-step-bps cfg) (get step-window cfg)))
     (ok true)))
 
 (define-private (positive-or-zero (value int))

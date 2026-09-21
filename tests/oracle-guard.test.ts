@@ -200,4 +200,30 @@ describe("oracle-guard", () => {
       expect(safePrice().result).toBeErr(err(6009));
     });
   });
+
+  describe("sudden moves", () => {
+    beforeEach(configure);
+
+    it("rejects a jump beyond the step limit shortly after the last price", () => {
+      setPrice(100_000);
+      safePrice();
+      setPrice(108_000, { emaUsd: 108_000 }); // ema followed, so only the step rule can object
+      expect(safePrice().result).toBeErr(err(6007));
+    });
+
+    it("accepts a small move shortly after the last price", () => {
+      setPrice(100_000);
+      safePrice();
+      setPrice(102_000, { emaUsd: 102_000 });
+      expect(safePrice().result).toBeOk(expect.anything());
+    });
+
+    it("accepts the same jump once the step window has passed", () => {
+      setPrice(100_000);
+      safePrice();
+      advance(GUARD_CFG.stepWindow + 30);
+      setPrice(108_000, { emaUsd: 108_000 });
+      expect(safePrice().result).toBeOk(expect.anything());
+    });
+  });
 });
