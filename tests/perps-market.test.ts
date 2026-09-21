@@ -238,4 +238,82 @@ describe("perps-market", () => {
         .toBeErr(expect.anything());
     });
   });
+
+  describe("liquidate", () => {
+    const REWARD = 49_750; // 5% of the net collateral of 995_000
+    const invariantHolds = () => {
+      const p = poolState();
+      return contractBalance("liquidity-pool") === p.liquidity + p.locked;
+    };
+
+    beforeEach(() => {
+      mintSbtc(lp, 10 * ONE_SBTC);
+      mintSbtc(trader, ONE_SBTC);
+      pool("set-market", [principalOf("perps-market")]);
+      market("set-price-source", [SOURCE()]);
+      pool("add-liquidity", [Cl.uint(ONE_SBTC)], lp);
+      setQuote(PRICE, T0);
+    });
+
+    it("rejects an unknown position", () => {
+      expect(liquidate(99).result).toBeErr(err(7005));
+    });
+
+    it("rejects a healthy position", () => {
+      open(true, COLLATERAL, SIZE);
+      setQuote(99_000e8, T0 + 1);
+      expect(liquidate(1).result).toBeErr(err(7008));
+    });
+
+    it("rejects a winning position", () => {
+      open(true, COLLATERAL, SIZE);
+      setQuote(150_000e8, T0 + 1);
+      expect(liquidate(1).result).toBeErr(err(7008));
+    });
+
+    it("rejects a position just short of 90% loss", () => {
+      open(true, COLLATERAL, SIZE);
+      setQuote(82_100e8, T0 + 1); // 17.9% down x 5 = 895_000 < 895_500
+      expect(liquidate(1).result).toBeErr(err(7008));
+    });
+
+    it("liquidates a long once the loss reaches 90% of collateral, with no minimum hold", () => {
+      open(true, COLLATERAL, SIZE);
+      setQuote(82_000e8, T0 + 1); // 18% down x 5 = 900_000 >= 895_500
+      expect(liquidate(1).result).toBeOk(Cl.uint(REWARD));
+    });
+
+    it("liquidates a short when the price rises far enough", () => {
+      open(false, COLLATERAL, SIZE);
+      setQuote(118_000e8, T0 + 1);
+      expect(liquidate(1).result).toBeOk(Cl.uint(REWARD));
+    });
+
+    it("pays the liquidator the reward and leaves the rest with LPs", () => {
+      open(true, COLLATERAL, SIZE);
+      const before = sbtcBalance(keeper);
+      const liquidityBefore = poolState().liquidity;
+      setQuote(82_000e8, T0 + 1);
+      liquidate(1);
+      expect(sbtcBalance(keeper) - before).toBe(REWARD);
+      expect(poolState().liquidity - liquidityBefore).toBe(NET - REWARD);
+      expect(invariantHolds()).toBe(true);
+    });
+
+    it("releases the position, reserve and open interest", () => {
+      open(true, COLLATERAL, SIZE);
+      setQuote(82_000e8, T0 + 1);
+      liquidate(1);
+      expect(marketRead("get-position", [Cl.uint(1)])).toBeNone();
+      expect(poolState()).toMatchObject({ locked: 0, reserved: 0 });
+      expect(marketRead("get-open-interest")).toStrictEqual(Cl.tuple({ long: Cl.uint(0), short: Cl.uint(0) }));
+    });
+
+    it("cannot liquidate the same position twice", () => {
+      open(true, COLLATERAL, SIZE);
+      setQuote(82_000e8, T0 + 1);
+      liquidate(1);
+      expect(liquidate(1).result).toBeErr(err(7005));
+    });
+  });
 });

@@ -15,6 +15,7 @@
 (define-constant ERR_NO_POSITION (err u7005))
 (define-constant ERR_NOT_OWNER (err u7006))
 (define-constant ERR_MIN_HOLD (err u7007))
+(define-constant ERR_NOT_LIQUIDATABLE (err u7008))
 
 (define-constant BTC_FEED 0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43)
 
@@ -90,6 +91,21 @@
       (asserts! (is-eq tx-sender (get owner pos)) ERR_NOT_OWNER)
       (asserts! (>= (get publish-time quote) (+ (get entry-time pos) MIN_HOLD)) ERR_MIN_HOLD)
       (settle-position id pos (get owner pos) (payout-at pos (get price quote))))))
+
+;; Anyone may liquidate a position that has lost enough of its collateral. The
+;; liquidator earns a reward; the remainder stays with LPs. No minimum hold: a
+;; liquidation must be possible as soon as the guarded price says so.
+(define-public (liquidate (id uint) (source <price-source>) (storage <storage-trait>))
+  (begin
+    (try! (require-pinned source))
+    (let (
+        (pos (unwrap! (map-get? positions id) ERR_NO_POSITION))
+        (quote (try! (contract-call? source get-safe-price BTC_FEED storage)))
+        (result (contract-call? .position-math pnl (get long pos) (get collateral pos) (get size pos) (get entry-price pos) (get price quote)))
+      )
+      (asserts! (contract-call? .position-math is-liquidatable (get favorable result) (get amount result) (get collateral pos))
+                ERR_NOT_LIQUIDATABLE)
+      (settle-position id pos tx-sender (contract-call? .position-math liquidation-reward (get collateral pos))))))
 
 ;; What the trader is owed if the position closes at `price`.
 (define-private (payout-at
