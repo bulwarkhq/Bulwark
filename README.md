@@ -48,6 +48,26 @@ A failed read reverts all state in Clarity, so it cannot persist a pause. `poke`
 
 The numbers come from the test run, not from an estimate. `naive-price-source` is a deliberately vulnerable fixture and must never be deployed.
 
+## Evidence: real mainnet data
+
+Beyond simulated attacks, the guard is tested against a fork of Stacks mainnet (Clarinet's mainnet execution simulation), wired to the real Pyth and Wormhole contracts. Nothing in these tests is mocked. Both forks are pinned to a block, so results are reproducible.
+
+**1. What the real oracle holds today** (fork at block 9,037,787, 2026-09-21)
+
+- The BTC/USD price stored in the real `pyth-storage-v4` is **over 30 days old**, and a plain `read` returns it anyway.
+- The stock staleness threshold, read from the real `pyth-governance-v3`, is **7,200 seconds (2 hours)**. The stock check refuses this entry only because it is 30 days past that window; anything under two hours old passes.
+- The guard refuses the price (`err u6003`) and records nothing. On the entry's other properties (confidence about 3 bps against a 100 bps limit, about 0.6% from Pyth's EMA against a 3% limit) it raises no objection, so the rules produce no false positives on real data.
+
+**2. A real signed update, replayed** (fork at block 8,517,360)
+
+A genuine `verify-and-update-price-feeds` transaction from mainnet (`0x00c6322799810a8e89da621dfb2bf31d042bb01b34c111e23c6e872db9ce55cc`, block 8,517,361) is replayed through the real Wormhole and Pyth contracts. Its 1,660 bytes are signature-checked by the real guardian set, and it stores a real BTC/USD price of $63,332.72. The guard then serves that price, remembers it, and refuses it once it has aged past the feed's window. The update was published about 165 seconds before the chain time it is read at, which is why the real-data tests use a 300 s window where the unit tests use 30 s.
+
+Run them (needs network access to the Hiro API; the forks fetch mainnet state on demand):
+
+```bash
+npm run test:mainnet
+```
+
 ## Architecture
 
 ```
@@ -95,7 +115,7 @@ npm install
 npm test
 ```
 
-163 tests across 8 files, all through the Clarinet SDK simnet. The suite was built test-first: each behaviour has its own commit.
+163 unit tests across 8 files, all through the Clarinet SDK simnet, plus 11 mainnet-fork tests (`npm run test:mainnet`). The suite was built test-first: each behaviour has its own commit.
 
 ## Limits
 
@@ -105,12 +125,12 @@ Stated plainly, because this is a prototype:
 - **Residual latency window.** A price up to `max-age` seconds old is still accepted, so an attacker can still exploit market movement inside that window. It is bounded by `max-age`, the fee and the minimum hold. The planned fix is request/execute settlement, where the execution price must be published after the request.
 - **The breaker can pause a legitimately volatile market.** `max-step-bps` and the cooldown are per-feed knobs; the defaults in the tests are illustrative.
 - **Perps simplifications:** pool value ignores unrealised PnL, no funding rate, single collateral, linear-in-sats settlement.
-- **Tested against a mock Pyth storage** that mirrors the real contract's read paths. Mainnet-fork testing against the deployed `pyth-storage-v4` is not done yet.
-- **Deployment wiring not done yet.** The traits and the sBTC token are local copies for simnet. For mainnet, point `pyth-traits-v2` at `SP1CGXWEAMG6P6FT04W66NVGJ7PQWMDAC19R7PJ0Y.pyth-traits-v2` and the token at the mainnet sBTC contract.
+- **The guard is tested against real Pyth; the perps market is not.** Unit tests use a mock Pyth storage. The mainnet forks exercise `oracle-guard` against the real `pyth-storage-v4`, but `liquidity-pool` and `perps-market` still run on a mock sBTC token; they have not been run against the real sBTC contract.
+- **Deployment wiring not done yet.** For the fork tests, `scripts/build-mainnet-fork.mjs` rewrites the local Pyth trait import to the real `SP1CGXWEAMG6P6FT04W66NVGJ7PQWMDAC19R7PJ0Y.pyth-traits-v2`. A production deployment needs the same change, and the market needs the real sBTC principal in place of the mock.
 
 ## Roadmap
 
-1. Mainnet-fork tests against the real Pyth storage and sBTC, then a testnet deployment.
+1. Run the market and pool against the real sBTC in the fork, then a testnet deployment.
 2. Request/execute settlement to close the latency window.
 3. Independent review and audit preparation; open-source the guard as a drop-in for other Stacks protocols.
 
