@@ -72,3 +72,5 @@ export function sbtcBalance(who: string): number {
 export const contractBalance = (name: string) => sbtcBalance(`${simnet.deployer}.${name}`);
 
 export const num = (cv: any, key: string): number => Number(cv.value[key].value);
+
+export const principalOf = (name: string) => Cl.contractPrincipal(simnet.deployer, name);

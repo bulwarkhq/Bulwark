@@ -63,3 +63,13 @@ epoch = "3.0"
 path = "contracts/position-math.clar"
 clarity_version = 3
 epoch = "3.0"
+
+[contracts.stub-price-source]
+path = "contracts/stub-price-source.clar"
+clarity_version = 3
+epoch = "3.0"
+
+[contracts.perps-market]
+path = "contracts/perps-market.clar"
+clarity_version = 3
+epoch = "3.0"
