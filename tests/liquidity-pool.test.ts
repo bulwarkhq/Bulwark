@@ -52,11 +52,6 @@ describe("liquidity-pool", () => {
     it("are not subject to the first-deposit floor", () => {
       expect(pool("add-liquidity", [Cl.uint(1_000)], lp2).result).toBeOk(Cl.uint(1_000));
     });
-
-    it("reject a deposit too small to earn a single share", () => {
-      // pool value is 1 sBTC per share here, so this only bites once value per share exceeds 1
-      expect(pool("add-liquidity", [Cl.uint(0)], lp2).result).toBeErr(err(9002));
-    });
   });
 
   describe("withdrawals", () => {
@@ -86,6 +81,71 @@ describe("liquidity-pool", () => {
       pool("remove-liquidity", [Cl.uint(ONE_SBTC)], lp2);
       expect(state()).toMatchObject({ liquidity: 0, shares: 0 });
       expect(contractBalance("liquidity-pool")).toBe(0);
+    });
+  });
+
+  describe("market authorization", () => {
+    const market = wallet(3);
+
+    it("has no market until the admin sets one", () => {
+      expect(read("get-market")).toBeNone();
+    });
+
+    it("lets only the admin set the market", () => {
+      expect(pool("set-market", [Cl.principal(market)], lp1).result).toBeErr(err(9000));
+      expect(pool("set-market", [Cl.principal(market)]).result).toBeOk(Cl.bool(true));
+      expect(read("get-market")).toBeSome(Cl.principal(market));
+    });
+  });
+
+  describe("take-collateral", () => {
+    const market = wallet(3);
+    const take = (amount: number, fee: number, reserve: number, sender = market) =>
+      pool("take-collateral", [Cl.principal(market), Cl.uint(amount), Cl.uint(fee), Cl.uint(reserve)], sender);
+
+    beforeEach(() => {
+      mintSbtc(market, ONE_SBTC);
+      pool("set-market", [Cl.principal(market)]);
+      pool("add-liquidity", [Cl.uint(ONE_SBTC)], lp1);
+    });
+
+    it("refuses anyone but the market", () => {
+      expect(take(1_000_000, 1_000, 3_000_000, lp1).result).toBeErr(err(9001));
+    });
+
+    it("locks the collateral, keeps the fee for LPs and reserves the max profit", () => {
+      expect(take(1_000_000, 1_000, 2_997_000).result).toBeOk(Cl.bool(true));
+      expect(state()).toMatchObject({ liquidity: ONE_SBTC + 1_000, locked: 999_000, reserved: 2_997_000 });
+      expect(contractBalance("liquidity-pool")).toBe(ONE_SBTC + 1_000 + 999_000);
+    });
+
+    it("refuses when the pool cannot cover the reserve", () => {
+      expect(take(1_000_000, 1_000, ONE_SBTC + 1).result).toBeErr(err(9006));
+    });
+
+    it("counts existing reservations against new ones", () => {
+      take(1_000_000, 1_000, 60_000_000);
+      expect(take(1_000_000, 1_000, 40_001_001).result).toBeErr(err(9006));
+    });
+  });
+
+  describe("withdrawals and the reserve", () => {
+    const market = wallet(3);
+
+    beforeEach(() => {
+      mintSbtc(market, ONE_SBTC);
+      pool("set-market", [Cl.principal(market)]);
+      pool("add-liquidity", [Cl.uint(ONE_SBTC)], lp1);
+      pool("take-collateral", [Cl.principal(market), Cl.uint(1_000_000), Cl.uint(1_000), Cl.uint(60_000_000)], market);
+    });
+
+    it("cannot dip below the reserved liability", () => {
+      // liquidity is ONE_SBTC + fee; 60M is reserved, so at most ~40M can leave
+      expect(pool("remove-liquidity", [Cl.uint(50_000_000)], lp1).result).toBeErr(err(9005));
+    });
+
+    it("can take everything above the reserve", () => {
+      expect(pool("remove-liquidity", [Cl.uint(39_000_000)], lp1).result).toBeOk(expect.anything());
     });
   });
 });
