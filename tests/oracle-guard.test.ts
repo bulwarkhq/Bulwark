@@ -189,4 +189,15 @@ describe("oracle-guard", () => {
       expect(lastAccepted().price).toStrictEqual(Cl.uint(100_000e8));
     });
   });
+
+  describe("continuity across reads", () => {
+    beforeEach(configure);
+
+    it("refuses a price older than one already served", () => {
+      const first = setPrice(100_000);
+      safePrice();
+      setPrice(100_000, { at: first.publishTime - 1 });
+      expect(safePrice().result).toBeErr(err(6009));
+    });
+  });
 });

@@ -84,6 +84,7 @@
     (try! (contract-call? .price-policy check-confidence (get conf entry) (to-uint (get price entry)) (get max-conf-bps cfg)))
     (try! (contract-call? .price-policy check-ema-deviation (to-uint (get price entry)) (positive-or-zero (get ema-price entry)) (get max-ema-dev-bps cfg)))
     (let ((price (try! (contract-call? .price-policy normalize (get price entry) (get expo entry)))))
+      (try! (check-continuity cfg (map-get? last-accepted feed) price (get publish-time entry)))
       (map-set last-accepted feed { price: price, publish-time: (get publish-time entry), accepted-at: (block-time) })
       (ok { price: price, publish-time: (get publish-time entry) }))))
 
@@ -92,6 +93,16 @@
   (if (> stacks-block-height u0)
     (default-to u0 (get-stacks-block-info? time (- stacks-block-height u1)))
     u0))
+
+;; Compare a candidate price with the last one this guard served.
+(define-private (check-continuity
+    (cfg { max-age: uint, max-conf-bps: uint, max-ema-dev-bps: uint, max-step-bps: uint, step-window: uint, cooldown: uint })
+    (last (optional { price: uint, publish-time: uint, accepted-at: uint }))
+    (price uint)
+    (publish-time uint))
+  (match last previous
+    (contract-call? .price-policy check-time-order (get publish-time previous) publish-time)
+    (ok true)))
 
 (define-private (positive-or-zero (value int))
   (if (> value 0) (to-uint value) u0))
