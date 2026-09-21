@@ -75,6 +75,7 @@
         (try! (contract-call? storage read feed))))
     )
     (try! (contract-call? .price-policy check-fresh (get publish-time entry) (block-time) (get max-age cfg)))
+    (try! (contract-call? .price-policy check-confidence (get conf entry) (to-uint (get price entry)) (get max-conf-bps cfg)))
     (ok {
       price: (try! (contract-call? .price-policy normalize (get price entry) (get expo entry))),
       publish-time: (get publish-time entry),

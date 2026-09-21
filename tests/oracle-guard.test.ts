@@ -142,4 +142,13 @@ describe("oracle-guard", () => {
       expect(safePrice().result).toBeErr(err(6004));
     });
   });
+
+  describe("get-safe-price confidence", () => {
+    beforeEach(configure);
+
+    it("rejects a price whose confidence interval is too wide", () => {
+      setPrice(100_000, { confBps: 300 }); // limit is 100 bps
+      expect(safePrice().result).toBeErr(err(6005));
+    });
+  });
 });
