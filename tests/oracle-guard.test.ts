@@ -108,4 +108,24 @@ describe("oracle-guard", () => {
       );
     });
   });
+
+  describe("get-safe-price gatekeeping", () => {
+    it("refuses a feed that has no config", () => {
+      guard("set-approved-storage", [storagePrincipal()]);
+      setPrice(100_000);
+      expect(safePrice().result).toBeErr(err(6002));
+    });
+
+    it("refuses any storage while none is approved", () => {
+      guard("set-feed-config", feedConfigArgs());
+      setPrice(100_000);
+      expect(safePrice().result).toBeErr(err(6011));
+    });
+
+    it("refuses an impostor storage contract that implements the same trait", () => {
+      configure();
+      setPrice(100_000, { storage: "fake-pyth-storage" });
+      expect(safePrice(storagePrincipal("fake-pyth-storage")).result).toBeErr(err(6011));
+    });
+  });
 });

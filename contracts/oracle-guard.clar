@@ -7,6 +7,8 @@
 (use-trait storage-trait .pyth-traits-v2.storage-trait)
 
 (define-constant ERR_NOT_ADMIN (err u6000))
+(define-constant ERR_FEED_NOT_CONFIGURED (err u6002))
+(define-constant ERR_UNAPPROVED_STORAGE (err u6011))
 (define-constant ERR_BAD_CONFIG (err u6010))
 
 (define-constant BPS u10000)
@@ -66,11 +68,19 @@
 
 ;; The one call a consumer protocol makes instead of reading Pyth directly.
 (define-public (get-safe-price (feed (buff 32)) (storage <storage-trait>))
-  (let ((entry (try! (contract-call? storage read feed))))
+  (let (
+      (cfg (unwrap! (map-get? feeds feed) ERR_FEED_NOT_CONFIGURED))
+      (entry (begin
+        (try! (require-approved storage))
+        (try! (contract-call? storage read feed))))
+    )
     (ok {
       price: (try! (contract-call? .price-policy normalize (get price entry) (get expo entry))),
       publish-time: (get publish-time entry),
     })))
+
+(define-private (require-approved (storage <storage-trait>))
+  (ok (asserts! (is-eq (some (contract-of storage)) (var-get approved-storage)) ERR_UNAPPROVED_STORAGE)))
 
 (define-private (require-admin)
   (ok (asserts! (is-eq tx-sender (var-get admin)) ERR_NOT_ADMIN)))
