@@ -7,9 +7,9 @@ const guard = (fn: string, args: any[] = [], sender = deployer()) =>
 const read = (fn: string, args: any[] = []) =>
   simnet.callReadOnlyFn("oracle-guard", fn, args, deployer()).result;
 
-const configure = () => {
+const configure = (cfg = GUARD_CFG) => {
   guard("set-approved-storage", [storagePrincipal()]);
-  guard("set-feed-config", feedConfigArgs());
+  guard("set-feed-config", feedConfigArgs(cfg));
 };
 const safePrice = (storage = storagePrincipal()) => guard("get-safe-price", [FEED, storage]);
 
@@ -130,7 +130,7 @@ describe("oracle-guard", () => {
   });
 
   describe("get-safe-price freshness", () => {
-    beforeEach(configure);
+    beforeEach(() => configure());
 
     it("rejects a price older than the feed's max-age", () => {
       setPrice(100_000, { ageSecs: 120 });
@@ -144,7 +144,7 @@ describe("oracle-guard", () => {
   });
 
   describe("get-safe-price confidence", () => {
-    beforeEach(configure);
+    beforeEach(() => configure());
 
     it("rejects a price whose confidence interval is too wide", () => {
       setPrice(100_000, { confBps: 300 }); // limit is 100 bps
@@ -153,7 +153,7 @@ describe("oracle-guard", () => {
   });
 
   describe("get-safe-price ema sanity", () => {
-    beforeEach(configure);
+    beforeEach(() => configure());
 
     it("rejects a price far from Pyth's own ema", () => {
       setPrice(108_000, { emaUsd: 100_000 }); // limit is 300 bps
@@ -168,7 +168,7 @@ describe("oracle-guard", () => {
 
   describe("last accepted price", () => {
     const lastAccepted = () => (read("get-last-accepted", [FEED]) as any).value?.value;
-    beforeEach(configure);
+    beforeEach(() => configure());
 
     it("is empty before any price is served", () => {
       expect(read("get-last-accepted", [FEED])).toBeNone();
@@ -191,7 +191,8 @@ describe("oracle-guard", () => {
   });
 
   describe("continuity across reads", () => {
-    beforeEach(configure);
+    // Freshness is not under test here; several blocks pass between reads.
+    beforeEach(() => configure({ ...GUARD_CFG, maxAge: 300 }));
 
     it("refuses a price older than one already served", () => {
       const first = setPrice(100_000);
@@ -202,7 +203,7 @@ describe("oracle-guard", () => {
   });
 
   describe("sudden moves", () => {
-    beforeEach(configure);
+    beforeEach(() => configure());
 
     it("rejects a jump beyond the step limit shortly after the last price", () => {
       setPrice(100_000);
