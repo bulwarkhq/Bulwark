@@ -22,6 +22,14 @@
   cooldown: uint,
 })
 
+(define-read-only (get-admin)
+  (var-get admin))
+
+(define-public (set-admin (new-admin principal))
+  (begin
+    (try! (require-admin))
+    (ok (var-set admin new-admin))))
+
 (define-read-only (get-approved-storage)
   (var-get approved-storage))
 

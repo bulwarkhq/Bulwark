@@ -70,4 +70,26 @@ describe("oracle-guard", () => {
       expect(setConfig(withField(MAX_STEP, 0)).result).toBeErr(err(6010));
     });
   });
+
+  describe("admin", () => {
+    it("starts as the deployer", () => {
+      expect(read("get-admin")).toStrictEqual(Cl.principal(deployer()));
+    });
+
+    it("can be handed over by the current admin", () => {
+      expect(guard("set-admin", [Cl.principal(stranger())]).result).toBeOk(Cl.bool(true));
+      expect(read("get-admin")).toStrictEqual(Cl.principal(stranger()));
+    });
+
+    it("gives the new admin control and takes it from the old one", () => {
+      guard("set-admin", [Cl.principal(stranger())]);
+      expect(guard("set-approved-storage", [storagePrincipal()], stranger()).result).toBeOk(Cl.bool(true));
+      expect(guard("set-approved-storage", [storagePrincipal()]).result).toBeErr(err(6000));
+    });
+
+    it("refuses a handover from anyone else", () => {
+      expect(guard("set-admin", [Cl.principal(stranger())], stranger()).result).toBeErr(err(6000));
+      expect(read("get-admin")).toStrictEqual(Cl.principal(deployer()));
+    });
+  });
 });
