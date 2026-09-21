@@ -140,4 +140,102 @@ describe("perps-market", () => {
       expect(open(true, COLLATERAL, SIZE, keeper).result).toBeErr(expect.anything());
     });
   });
+
+  describe("close-position", () => {
+    const HOLD = 30;
+    const PAID_FEE = FEE; // closing charges the same 0.10% of size
+    const openLong = () => open(true, COLLATERAL, SIZE);
+    const invariantHolds = () => {
+      const p = poolState();
+      return contractBalance("liquidity-pool") === p.liquidity + p.locked;
+    };
+
+    beforeEach(() => {
+      mintSbtc(lp, 10 * ONE_SBTC);
+      mintSbtc(trader, ONE_SBTC);
+      pool("set-market", [principalOf("perps-market")]);
+      market("set-price-source", [SOURCE()]);
+      pool("add-liquidity", [Cl.uint(ONE_SBTC)], lp);
+      setQuote(PRICE, T0);
+    });
+
+    it("rejects an unknown position", () => {
+      expect(close(99).result).toBeErr(err(7005));
+    });
+
+    it("rejects anyone but the owner", () => {
+      openLong();
+      setQuote(PRICE, T0 + 60);
+      expect(close(1, keeper).result).toBeErr(err(7006));
+    });
+
+    it("rejects a close on a price published less than the minimum hold after entry", () => {
+      openLong();
+      setQuote(101_000e8, T0 + HOLD - 1);
+      expect(close(1).result).toBeErr(err(7007));
+    });
+
+    it("allows a close exactly at the minimum hold", () => {
+      openLong();
+      setQuote(PRICE, T0 + HOLD);
+      expect(close(1).result).toBeOk(expect.anything());
+    });
+
+    it("pays a winning long its profit minus the close fee", () => {
+      openLong();
+      const before = sbtcBalance(trader);
+      setQuote(101_000e8, T0 + 60);
+      expect(close(1).result).toBeOk(Cl.uint(NET + 50_000 - PAID_FEE));
+      expect(sbtcBalance(trader) - before).toBe(NET + 50_000 - PAID_FEE);
+    });
+
+    it("pays a losing long what is left after the loss and the fee", () => {
+      openLong();
+      setQuote(99_000e8, T0 + 60);
+      expect(close(1).result).toBeOk(Cl.uint(NET - 50_000 - PAID_FEE));
+    });
+
+    it("pays a short the mirror image", () => {
+      open(false, COLLATERAL, SIZE);
+      setQuote(99_000e8, T0 + 60);
+      expect(close(1).result).toBeOk(Cl.uint(NET + 50_000 - PAID_FEE));
+    });
+
+    it("caps a runaway win at three times the collateral", () => {
+      openLong();
+      setQuote(300_000e8, T0 + 60);
+      expect(close(1).result).toBeOk(Cl.uint(NET + 3 * NET - PAID_FEE));
+    });
+
+    it("releases the position, its locked collateral, reserve and open interest", () => {
+      openLong();
+      setQuote(101_000e8, T0 + 60);
+      close(1);
+      expect(marketRead("get-position", [Cl.uint(1)])).toBeNone();
+      expect(poolState()).toMatchObject({ locked: 0, reserved: 0 });
+      expect(marketRead("get-open-interest")).toStrictEqual(Cl.tuple({ long: Cl.uint(0), short: Cl.uint(0) }));
+    });
+
+    it("keeps custody equal to liquidity plus locked collateral after wins and losses", () => {
+      openLong();
+      open(false, COLLATERAL, SIZE);
+      setQuote(101_000e8, T0 + 60);
+      close(1);
+      close(2);
+      expect(invariantHolds()).toBe(true);
+    });
+
+    it("cannot close the same position twice", () => {
+      openLong();
+      setQuote(PRICE, T0 + 60);
+      close(1);
+      expect(close(1).result).toBeErr(err(7005));
+    });
+
+    it("refuses an unpinned price source", () => {
+      openLong();
+      expect(market("close-position", [Cl.uint(1), principalOf("trait-caller"), storagePrincipal()], trader).result)
+        .toBeErr(expect.anything());
+    });
+  });
 });

@@ -12,12 +12,18 @@
 (define-constant ERR_BAD_AMOUNT (err u7002))
 (define-constant ERR_LEVERAGE (err u7003))
 (define-constant ERR_UTILIZATION (err u7004))
+(define-constant ERR_NO_POSITION (err u7005))
+(define-constant ERR_NOT_OWNER (err u7006))
+(define-constant ERR_MIN_HOLD (err u7007))
 
 (define-constant BTC_FEED 0xe62df6c8b4a85fe1a67db44dc12de5db330f7ac66b72dc658afedf0f4a415b43)
 
 (define-constant MIN_COLLATERAL u10000)   ;; 0.0001 sBTC
 (define-constant MAX_UTILIZATION_BPS u5000) ;; reserved max profit <= 50% of LP liquidity
 (define-constant BPS u10000)
+;; A close must use a price published at least this many seconds after the price
+;; the position opened on, so open/close churn cannot skim tiny moves.
+(define-constant MIN_HOLD u30)
 
 (define-data-var admin principal tx-sender)
 ;; Callers pass the price source as an argument, so it must be pinned: otherwise
@@ -73,6 +79,40 @@
       (var-set long-oi (+ (var-get long-oi) size))
       (var-set short-oi (+ (var-get short-oi) size)))
     (ok id))))
+
+(define-public (close-position (id uint) (source <price-source>) (storage <storage-trait>))
+  (begin
+    (try! (require-pinned source))
+    (let (
+        (pos (unwrap! (map-get? positions id) ERR_NO_POSITION))
+        (quote (try! (contract-call? source get-safe-price BTC_FEED storage)))
+      )
+      (asserts! (is-eq tx-sender (get owner pos)) ERR_NOT_OWNER)
+      (asserts! (>= (get publish-time quote) (+ (get entry-time pos) MIN_HOLD)) ERR_MIN_HOLD)
+      (settle-position id pos (get owner pos) (payout-at pos (get price quote))))))
+
+;; What the trader is owed if the position closes at `price`.
+(define-private (payout-at
+    (pos { owner: principal, long: bool, collateral: uint, size: uint, entry-price: uint, entry-time: uint })
+    (price uint))
+  (let ((result (contract-call? .position-math pnl (get long pos) (get collateral pos) (get size pos) (get entry-price pos) price)))
+    (contract-call? .position-math payout (get favorable result) (get amount result) (get collateral pos)
+      (contract-call? .position-math fee-of (get size pos)))))
+
+;; Remove the position and have the pool pay `payout` to `recipient`.
+(define-private (settle-position
+    (id uint)
+    (pos { owner: principal, long: bool, collateral: uint, size: uint, entry-price: uint, entry-time: uint })
+    (recipient principal)
+    (payout uint))
+  (begin
+    (try! (contract-call? .liquidity-pool settle recipient (get collateral pos)
+            (contract-call? .position-math max-profit-reserve (get collateral pos)) payout))
+    (map-delete positions id)
+    (if (get long pos)
+      (var-set long-oi (- (var-get long-oi) (get size pos)))
+      (var-set short-oi (- (var-get short-oi) (get size pos))))
+    (ok payout)))
 
 ;; Would reserving `extra` more max-profit keep utilization within the cap?
 (define-private (within-utilization (extra uint))
