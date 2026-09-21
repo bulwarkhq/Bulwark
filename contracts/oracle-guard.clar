@@ -4,6 +4,7 @@
 ;; price and the circuit breaker; every judgement about a price is delegated to
 ;; price-policy.
 
+(impl-trait .price-source-trait.price-source-trait)
 (use-trait storage-trait .pyth-traits-v2.storage-trait)
 
 (define-constant ERR_NOT_ADMIN (err u6000))

@@ -33,3 +33,13 @@ epoch = "3.0"
 path = "contracts/oracle-guard.clar"
 clarity_version = 3
 epoch = "3.0"
+
+[contracts.price-source-trait]
+path = "contracts/price-source-trait.clar"
+clarity_version = 3
+epoch = "3.0"
+
+[contracts.trait-caller]
+path = "contracts/trait-caller.clar"
+clarity_version = 3
+epoch = "3.0"
