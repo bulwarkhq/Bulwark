@@ -36,9 +36,9 @@ Neither looks at the confidence interval, deviation from the market, time orderi
 
 A failed read reverts all state in Clarity, so it cannot persist a pause. `poke` is a permissionless call that trips the breaker when the raw price is off-market (EMA deviation or a sudden jump); `resume` clears it after a per-feed cooldown once the price is healthy again.
 
-## Evidence: the attack, replayed
+## Evidence
 
-`tests/attack-replay.test.ts` runs the **same** perps market and liquidity pool three times. Only the price source it is pinned to changes. Each run is 10 cycles of the stale-price pattern: open in the direction of a known 1% market move against the stale stored price, push the fresh price, close. Pool: 1 sBTC. Attacker: 0.1 sBTC collateral at 5x.
+**The attack, replayed.** The same perps market and liquidity pool are run three times, changing only the price source. Ten cycles of the stale-price pattern (open against a known market move, push the fresh price, close) against a 1 sBTC pool:
 
 | Price source | Attacker profit | Pool change | Opens rejected |
 |---|---|---|---|
@@ -46,27 +46,12 @@ A failed read reverts all state in Clarity, so it cannot persist a pause. `poke`
 | Careless read, no staleness check | +4,000,000 sats | −4,000,000 sats | 0 / 10 |
 | **Oracle guard** | **0** | **0** | **10 / 10** |
 
-The numbers come from the test run, not from an estimate. `naive-price-source` is a deliberately vulnerable fixture and must never be deployed.
+**Real mainnet data.** Beyond the simulated attack, the guard is exercised against a fork of Stacks mainnet with the real Pyth and Wormhole contracts, nothing mocked:
 
-## Evidence: real mainnet data
+- At block 9,037,787, the BTC/USD price stored in the real `pyth-storage-v4` was **over 30 days old**, and a plain `read` returned it anyway; the stock staleness threshold is **7,200 seconds (2 hours)**. The guard refuses it, with no false positives on the entry's other properties.
+- A genuine, signed Pyth update from mainnet (`0x00c632...55cc`, block 8,517,361) was replayed through the real Wormhole and Pyth contracts; the guard served the resulting real price, remembered it, and refused it once it aged past the feed's window.
 
-Beyond simulated attacks, the guard is tested against a fork of Stacks mainnet (Clarinet's mainnet execution simulation), wired to the real Pyth and Wormhole contracts. Nothing in these tests is mocked. Both forks are pinned to a block, so results are reproducible.
-
-**1. What the real oracle holds today** (fork at block 9,037,787, 2026-09-21)
-
-- The BTC/USD price stored in the real `pyth-storage-v4` is **over 30 days old**, and a plain `read` returns it anyway.
-- The stock staleness threshold, read from the real `pyth-governance-v3`, is **7,200 seconds (2 hours)**. The stock check refuses this entry only because it is 30 days past that window; anything under two hours old passes.
-- The guard refuses the price (`err u6003`) and records nothing. On the entry's other properties (confidence about 3 bps against a 100 bps limit, about 0.6% from Pyth's EMA against a 3% limit) it raises no objection, so the rules produce no false positives on real data.
-
-**2. A real signed update, replayed** (fork at block 8,517,360)
-
-A genuine `verify-and-update-price-feeds` transaction from mainnet (`0x00c6322799810a8e89da621dfb2bf31d042bb01b34c111e23c6e872db9ce55cc`, block 8,517,361) is replayed through the real Wormhole and Pyth contracts. Its 1,660 bytes are signature-checked by the real guardian set, and it stores a real BTC/USD price of $63,332.72. The guard then serves that price, remembers it, and refuses it once it has aged past the feed's window. The update was published about 165 seconds before the chain time it is read at, which is why the real-data tests use a 300 s window where the unit tests use 30 s.
-
-Run them (needs network access to the Hiro API; the forks fetch mainnet state on demand):
-
-```bash
-npm run test:mainnet
-```
+Full detail, including the exact fields and thresholds checked, is in [tests-mainnet/](tests-mainnet/); how to run it is under [Development](#development).
 
 ## Architecture
 
@@ -108,15 +93,6 @@ The market depends on `price-source-trait`, not on the guard, and pins the appro
 - reserved max profit is capped at 50% of LP liquidity
 - liquidation at 90% collateral loss; the liquidator earns 5% of collateral
 
-## Run the tests
-
-```bash
-npm install
-npm test
-```
-
-163 unit tests across 8 files, all through the Clarinet SDK simnet, plus 11 mainnet-fork tests (`npm run test:mainnet`). The suite was built test-first: each behaviour has its own commit.
-
 ## Limits
 
 Stated plainly, because this is a prototype:
@@ -144,6 +120,16 @@ The planned approach is one small adapter per source that maps its format to a c
 2. Request/execute settlement to close the latency window.
 3. Independent review and audit preparation; open-source the guard as a drop-in for other Stacks protocols.
 4. Source adapters, so the same guard can protect prices from oracles other than Pyth.
+
+## Development
+
+```bash
+npm install
+npm test              # 163 unit tests, through the Clarinet SDK simnet
+npm run test:mainnet  # 11 tests against a fork of Stacks mainnet, needs Hiro API access
+```
+
+Built test-first: each behaviour has its own commit.
 
 ## License
 
